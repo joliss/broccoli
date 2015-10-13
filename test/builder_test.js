@@ -348,7 +348,24 @@ describe('Builder', function() {
     })
   })
 
-  describe('timings', function() {
+  it('reports node timings')
+
+  describe('event handling', function() {
+    it('triggers RSVP events', function() {
+      builder = new Builder(new MergeTrees([new Fixturify({})]))
+      var events = []
+      builder.on('start', function() { events.push('start') })
+      builder.on('end', function() { events.push('end') })
+      builder.on('nodeStart', function(bn) { events.push('nodeStart:' + bn.id) })
+      builder.on('nodeEnd', function(bn) { events.push('nodeEnd:' + bn.id) })
+      return builder.build()
+        .then(function() {
+          expect(events).to.deep.equal(
+            ['start', 'nodeStart:0', 'nodeEnd:0', 'nodeStart:1', 'nodeEnd:1', 'end'])
+        })
+    })
+
+    it('triggers matching nodeEnd event when a node fails to build')
   })
 
   // it('tree graph', function() {
