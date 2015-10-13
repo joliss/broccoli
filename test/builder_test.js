@@ -192,6 +192,8 @@ describe('Builder', function() {
       }).to.throw(Builder.BuilderError, 'Cycle in node graph: CyclicalPlugin -> CyclicalPlugin')
     })
 
+    it('handles string exceptions in all sorts of places')
+
     describe('invalid nodes', function() {
       var invalidNode = { 'not a node': true }
       var readBasedNode = { read: function() { }, cleanup: function() { }, description: 'an old node' }
@@ -293,22 +295,55 @@ describe('Builder', function() {
       FailingBuildPlugin.prototype = Object.create(Plugin.prototype)
       FailingBuildPlugin.prototype.constructor = FailingBuildPlugin
       function FailingBuildPlugin(errorObject) {
-        Plugin.call(this, [])
+        Plugin.call(this, [], { annotation: 'annotated' })
         this.errorObject = errorObject
       }
       FailingBuildPlugin.prototype.build = function() {
         throw this.errorObject
       }
 
-      it('reports the offending node', function() {
-        var error = new Error('some build error')
-        builder = new Builder(new FailingBuildPlugin(error))
-        return builder.build().then(function() {
-          throw new Error('Expected an error')
-        }, function(err) {
-          expect(err).to.be.an.instanceof(Builder.BuildError)
-          expect(err.message).to.match(/some build error/)
-        })
+      it('rethrows as rich BuildError', function() {
+        var originalError = new Error('whoops')
+        originalError.file = 'somefile.js'
+        originalError.treeDir = '/some/dir'
+        originalError.line = 42
+        originalError.column = 3
+        originalError.randomProperty = 'is ignored'
+
+        builder = new Builder(new FailingBuildPlugin(originalError))
+        return builder.build()
+          .then(function() {
+            throw new Error('Expected an error')
+          }, function(err) {
+            expect(err).to.be.an.instanceof(Builder.BuildError)
+            expect(err.stack).to.equal(originalError.stack, 'preserves original stack')
+
+            expect(err.message).to.match(/somefile.js:42:4: whoops\nin \/some\/dir\nthrown from "FailingBuildPlugin: annotated"/)
+            expect(err.message).not.to.match(/instantiated here/, 'suppresses instantiation stack when .file is supplied')
+
+            expect(err.broccoliPayload.originalError).to.equal(originalError)
+
+            // Reports offending node
+            expect(err.broccoliPayload.nodeId).to.equal(0)
+            expect(err.broccoliPayload.nodeName).to.equal('FailingBuildPlugin')
+            expect(err.broccoliPayload.nodeAnnotation).to.equal('annotated')
+            expect(err.broccoliPayload.instantiationStack).to.be.a('string')
+
+            // Passes on special properties
+            expect(err.broccoliPayload.file).to.equal('somefile.js')
+            expect(err.broccoliPayload.treeDir).to.equal('/some/dir')
+            expect(err.broccoliPayload.line).to.equal(42)
+            expect(err.broccoliPayload.column).to.equal(3)
+            expect(err.broccoliPayload).not.to.have.property('randomProperty')
+          })
+      })
+
+      it('reports the instantiationStack when no err.file is given', function() {
+        var originalError = new Error('whoops')
+
+        builder = new Builder(new FailingBuildPlugin(originalError))
+        return expect(builder.build()).to.be.rejectedWith(Builder.BuildError,
+          /whoops\nthrown from "FailingBuildPlugin: annotated"\n-~- instantiated here: -~-/)
       })
     })
   })
