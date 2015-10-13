@@ -120,6 +120,29 @@ describe('Builder', function() {
           expect(buildSpy).to.have.been.calledOnce
         })
     })
+
+    it('supplies a cachePath', function() {
+      // inputPath and outputPath are tested implicitly by the other tests,
+      // but cachePath isn't, so we have this test case
+
+      var cachePath
+
+      TestPlugin.prototype = Object.create(Plugin.prototype)
+      TestPlugin.prototype.constructor = TestPlugin
+      function TestPlugin() {
+        Plugin.call(this, [])
+      }
+      TestPlugin.prototype.build = function() {
+        cachePath = this.cachePath
+      }
+
+      builder = new Builder(new TestPlugin)
+      return builder.build()
+        .then(function() {
+          expect(cachePath).to.be.ok
+          fs.accessSync(cachePath) // throws if it doesn't exist
+        })
+    })
   })
 
   describe('"source" nodes and strings', function() {
