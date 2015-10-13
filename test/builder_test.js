@@ -204,9 +204,6 @@ describe('Builder', function() {
         }).to.throw(Builder.InvalidNodeError, /\.read\/\.rebuild API[^\n]*"an old node"\nused as input node to "BroccoliMergeTrees: some annotation"\n-~- instantiated here: -~-/)
       })
     })
-
-    describe('failing node setup', function() {
-    })
   })
 
   describe('temporary directories', function() {
@@ -247,6 +244,26 @@ describe('Builder', function() {
       builder.cleanup()
       builder = null
       expect(hasBroccoliTmpDir('test/tmp')).to.be.false
+    })
+
+    describe('failing node setup', function() {
+      FailingSetupPlugin.prototype = Object.create(Plugin.prototype)
+      FailingSetupPlugin.prototype.constructor = FailingSetupPlugin
+      function FailingSetupPlugin() {
+        Plugin.call(this, [])
+      }
+      FailingSetupPlugin.prototype.getCallbackObject = function() {
+        // This can happen if we tried to instantiate some compiler here
+        throw new Error('foo error')
+      }
+
+      it('reports failing node and instantiation stack, and cleans up temporary directory', function() {
+        var node = new FailingSetupPlugin
+        expect(function() {
+          new Builder(node, { tmpdir: 'test/tmp' })
+        }).to.throw(Builder.BuilderError, /foo error\nthrown from "FailingSetupPlugin"\n-~- instantiated here: -~-/)
+        expect(hasBroccoliTmpDir('test/tmp')).to.be.false
+      })
     })
   })
 
