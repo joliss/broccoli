@@ -284,8 +284,31 @@ describe('Builder', function() {
         var node = new FailingSetupPlugin
         expect(function() {
           new Builder(node, { tmpdir: 'test/tmp' })
-        }).to.throw(Builder.BuilderError, /foo error\nthrown from "FailingSetupPlugin"\n-~- instantiated here: -~-/)
+        }).to.throw(Builder.NodeSetupError, /foo error\nthrown from "FailingSetupPlugin"\n-~- instantiated here: -~-/)
         expect(hasBroccoliTmpDir('test/tmp')).to.be.false
+      })
+    })
+
+    describe('failing node build', function() {
+      FailingBuildPlugin.prototype = Object.create(Plugin.prototype)
+      FailingBuildPlugin.prototype.constructor = FailingBuildPlugin
+      function FailingBuildPlugin(errorObject) {
+        Plugin.call(this, [])
+        this.errorObject = errorObject
+      }
+      FailingBuildPlugin.prototype.build = function() {
+        throw this.errorObject
+      }
+
+      it('reports the offending node', function() {
+        var error = new Error('some build error')
+        builder = new Builder(new FailingBuildPlugin(error))
+        return builder.build().then(function() {
+          throw new Error('Expected an error')
+        }, function(err) {
+          expect(err).to.be.an.instanceof(Builder.BuildError)
+          expect(err.message).to.match(/some build error/)
+        })
       })
     })
   })
