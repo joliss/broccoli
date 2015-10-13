@@ -1,5 +1,8 @@
 var fs = require('fs')
 var path = require('path')
+var os = require('os')
+var rimraf = require('rimraf')
+var RSVP = require('rsvp')
 var broccoli = require('..')
 var Builder = broccoli.Builder
 var Plugin = require('broccoli-plugin')
@@ -13,7 +16,6 @@ var sinon = require('sinon')
 var chai = require('chai'), expect = chai.expect
 var chaiAsPromised = require('chai-as-promised'); chai.use(chaiAsPromised)
 var sinonChai = require('sinon-chai'); chai.use(sinonChai)
-var RSVP = require('rsvp')
 
 RSVP.on('error', function(error) {
   throw error
@@ -92,19 +94,16 @@ function buildToFixture(node) {
 }
 
 
-
-
-
 describe('Builder', function() {
-  // var builder
+  var builder
 
-  // afterEach(function() {
-  //   if (builder) {
-  //     return RSVP.resolve(builder.cleanup()).then(function() {
-  //       builder = null
-  //     })
-  //   }
-  // })
+  afterEach(function() {
+    if (builder) {
+      return RSVP.resolve(builder.cleanup()).then(function() {
+        builder = null
+      })
+    }
+  })
 
   describe('"transform" nodes (.build)', function() {
     it('builds a single node', function() {
@@ -125,46 +124,129 @@ describe('Builder', function() {
 
   describe('"source" nodes and strings', function() {
     it('records unwatched source directories', function() {
-      var builder = new FixtureBuilder(new UnwatchedDir('test/fixtures/basic'))
+      builder = new FixtureBuilder(new UnwatchedDir('test/fixtures/basic'))
       expect(builder.watchedPaths).to.deep.equal([])
       expect(builder.unwatchedPaths).to.deep.equal(['test/fixtures/basic'])
-      return expect(builder.build().finally(builder.cleanup.bind(builder)))
+      return expect(builder.build())
         .to.eventually.deep.equal({ 'foo.txt': 'OK' })
     })
 
     it('records watched source directories', function() {
-      var builder = new FixtureBuilder(new WatchedDir('test/fixtures/basic'))
+      builder = new FixtureBuilder(new WatchedDir('test/fixtures/basic'))
       expect(builder.watchedPaths).to.deep.equal(['test/fixtures/basic'])
       expect(builder.unwatchedPaths).to.deep.equal([])
-      return expect(builder.build().finally(builder.cleanup.bind(builder)))
+      return expect(builder.build())
         .to.eventually.deep.equal({ 'foo.txt': 'OK' })
     })
 
     it('records string (watched) source directories', function() {
-      var builder = new FixtureBuilder('test/fixtures/basic')
+      builder = new FixtureBuilder('test/fixtures/basic')
       expect(builder.watchedPaths).to.deep.equal(['test/fixtures/basic'])
       expect(builder.unwatchedPaths).to.deep.equal([])
-      return expect(builder.build().finally(builder.cleanup.bind(builder)))
+      return expect(builder.build())
         .to.eventually.deep.equal({ 'foo.txt': 'OK' })
     })
 
     it('records source directories only once', function() {
       var src = 'test/fixtures/basic'
-      var builder = new FixtureBuilder(new MergeTrees([src, src]))
+      builder = new FixtureBuilder(new MergeTrees([src, src]))
       expect(builder.watchedPaths).to.deep.equal(['test/fixtures/basic'])
-      return builder.cleanup()
     })
   })
 
   describe('error handling', function() {
-    it('augments setup errors', function() {
-      var node = new MergeTrees([{ 'not a node': true }])
-      try {
-        new Builder(node)
-        throw new Error('expected error')
-      } catch (err) {
-        expect(err).to.have.property('errorType', 'init')
+    it('detects cycles', function() {
+      // Cycles are quite hard to construct, so we make a special plugin
+      CyclicalPlugin.prototype = Object.create(Plugin.prototype)
+      CyclicalPlugin.prototype.constructor = CyclicalPlugin
+      function CyclicalPlugin() {
+        Plugin.call(this, [this]) // use `this` as input node
       }
+      CyclicalPlugin.prototype.build = function() { }
+
+      expect(function() {
+        new Builder(new CyclicalPlugin)
+      }).to.throw(Builder.BuilderError, 'Cycle in node graph: CyclicalPlugin -> CyclicalPlugin')
+    })
+
+    describe('invalid nodes', function() {
+      var invalidNode = { 'not a node': true }
+      var readBasedNode = { read: function() { }, cleanup: function() { }, description: 'an old node' }
+
+      it('catches invalid root nodes', function() {
+        expect(function() {
+          new Builder(invalidNode)
+        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got \[object Object\] as root node$/)
+      })
+
+      it('catches invalid input nodes', function() {
+        expect(function() {
+          new Builder(new MergeTrees([invalidNode], { annotation: 'some annotation' }))
+        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got \[object Object\]\nused as input node to "BroccoliMergeTrees: some annotation"\n-~- instantiated here: -~-/)
+      })
+
+      it('catches undefined input nodes', function() {
+        // Very common subcase of invalid input nodes
+        expect(function() {
+          new Builder(new MergeTrees([undefined], { annotation: 'some annotation' }))
+        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got undefined\nused as input node to "BroccoliMergeTrees: some annotation"\n-~- instantiated here: -~-/)
+      })
+
+      it('catches .read/.rebuild-based root nodes', function() {
+        expect(function() {
+          new Builder(readBasedNode)
+        }).to.throw(Builder.InvalidNodeError, /\.read\/\.rebuild API[^\n]*"an old node" as root node/)
+      })
+
+      it('catches .read/.rebuild-based input nodes', function() {
+        expect(function() {
+          new Builder(new MergeTrees([readBasedNode], { annotation: 'some annotation' }))
+        }).to.throw(Builder.InvalidNodeError, /\.read\/\.rebuild API[^\n]*"an old node"\nused as input node to "BroccoliMergeTrees: some annotation"\n-~- instantiated here: -~-/)
+      })
+    })
+
+    describe('failing node setup', function() {
+    })
+  })
+
+  describe('temporary directories', function() {
+    beforeEach(function() {
+      rimraf.sync('test/tmp')
+      fs.mkdirSync('test/tmp')
+    })
+
+    after(function() {
+      rimraf.sync('test/tmp')
+    })
+
+    function hasBroccoliTmpDir(baseDir) {
+      var entries = fs.readdirSync(baseDir)
+      for (var i = 0; i < entries.length; i++) {
+        if (/^broccoli-/.test(entries[i])) {
+          return true
+        }
+      }
+      return false
+    }
+
+    it('creates temporary directory in os.tmpdir() by default', function() {
+      builder = new Builder(new Fixturify({}))
+      // This can have false positives from other Broccoli instances, but it's
+      // better than nothing, and better than trying to be sophisticated
+      expect(hasBroccoliTmpDir(os.tmpdir())).to.be.true
+    })
+
+    it('creates temporary directory in directory given by tmpdir options', function() {
+      builder = new Builder(new Fixturify({}), { tmpdir: 'test/tmp' })
+      expect(hasBroccoliTmpDir('test/tmp')).to.be.true
+    })
+
+    it('removes temporary directory when .cleanup() is called', function() {
+      builder = new Builder(new Fixturify({}), { tmpdir: 'test/tmp' })
+      expect(hasBroccoliTmpDir('test/tmp')).to.be.true
+      builder.cleanup()
+      builder = null
+      expect(hasBroccoliTmpDir('test/tmp')).to.be.false
     })
   })
 
