@@ -158,6 +158,13 @@ describe('Builder', function() {
 
   describe('error handling', function() {
     it('augments setup errors', function() {
+      var node = new MergeTrees([{ 'not a node': true }])
+      try {
+        new Builder(node)
+        throw new Error('expected error')
+      } catch (err) {
+        expect(err).to.have.property('errorType', 'init')
+      }
     })
   })
 
