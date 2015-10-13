@@ -53,6 +53,16 @@ TaggingPlugin.prototype.build = function() {
   this.buildCount++
 }
 
+FailingBuildPlugin.prototype = Object.create(Plugin.prototype)
+FailingBuildPlugin.prototype.constructor = FailingBuildPlugin
+function FailingBuildPlugin(errorObject, options) {
+  Plugin.call(this, [], options)
+  this.errorObject = errorObject
+}
+FailingBuildPlugin.prototype.build = function() {
+  throw this.errorObject
+}
+
 
 // function countingTree(readFn) {
 //   return {
@@ -292,15 +302,9 @@ describe('Builder', function() {
     })
 
     describe('failing node build', function() {
-      FailingBuildPlugin.prototype = Object.create(Plugin.prototype)
-      FailingBuildPlugin.prototype.constructor = FailingBuildPlugin
-      function FailingBuildPlugin(errorObject) {
-        Plugin.call(this, [], { annotation: 'annotated' })
-        this.errorObject = errorObject
-      }
-      FailingBuildPlugin.prototype.build = function() {
-        throw this.errorObject
-      }
+      // function MyError(message) {
+      //   this.message = message
+      // }
 
       it('rethrows as rich BuildError', function() {
         var originalError = new Error('whoops')
@@ -310,7 +314,13 @@ describe('Builder', function() {
         originalError.column = 3
         originalError.randomProperty = 'is ignored'
 
-        builder = new Builder(new FailingBuildPlugin(originalError))
+        var node = new FailingBuildPlugin(originalError, { annotation: 'annotated' })
+        // Wrapping in MergeTrees shouldn't make a difference. This way we
+        // test that we don't have multiple catch clauses applying, wrapping
+        // the error repeatedly
+        node = new MergeTrees([node])
+        builder = new Builder(node)
+
         return builder.build()
           .then(function() {
             throw new Error('Expected an error')
@@ -343,7 +353,7 @@ describe('Builder', function() {
 
         builder = new Builder(new FailingBuildPlugin(originalError))
         return expect(builder.build()).to.be.rejectedWith(Builder.BuildError,
-          /whoops\nthrown from "FailingBuildPlugin: annotated"\n-~- instantiated here: -~-/)
+          /whoops\nthrown from "FailingBuildPlugin"\n-~- instantiated here: -~-/)
       })
     })
   })
@@ -351,13 +361,19 @@ describe('Builder', function() {
   it('reports node timings')
 
   describe('event handling', function() {
-    it('triggers RSVP events', function() {
-      builder = new Builder(new MergeTrees([new Fixturify({})]))
-      var events = []
+    var events
+
+    function setupEventHandlers() {
+      events = []
       builder.on('start', function() { events.push('start') })
       builder.on('end', function() { events.push('end') })
       builder.on('nodeStart', function(bn) { events.push('nodeStart:' + bn.id) })
       builder.on('nodeEnd', function(bn) { events.push('nodeEnd:' + bn.id) })
+    }
+
+    it('triggers RSVP events', function() {
+      builder = new Builder(new MergeTrees([new Fixturify({})]))
+      setupEventHandlers()
       return builder.build()
         .then(function() {
           expect(events).to.deep.equal(
@@ -365,7 +381,15 @@ describe('Builder', function() {
         })
     })
 
-    it('triggers matching nodeEnd event when a node fails to build')
+    it('triggers matching nodeEnd event when a node fails to build', function() {
+      builder = new Builder(new MergeTrees([new FailingBuildPlugin(new Error('whoops'))]))
+      setupEventHandlers()
+      return expect(builder.build()).to.be.rejected
+        .then(function() {
+          expect(events).to.deep.equal(
+            ['start', 'nodeStart:0', 'nodeEnd:0', 'end'])
+        })
+    })
   })
 
   // it('tree graph', function() {
