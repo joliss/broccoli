@@ -17,6 +17,12 @@ var chai = require('chai'), expect = chai.expect
 var chaiAsPromised = require('chai-as-promised'); chai.use(chaiAsPromised)
 var sinonChai = require('sinon-chai'); chai.use(sinonChai)
 
+
+// TODO:
+// integration test against multiple plugin versions
+
+
+
 RSVP.on('error', function(error) {
   throw error
 })
@@ -93,26 +99,6 @@ SleepingPlugin.prototype.build = function() {
     setTimeout(resolve, 10)
   })
 }
-
-
-// function countingTree(readFn) {
-//   return {
-//     read: function(readTree) {
-//       this.readCount++
-//       return readFn.call(this, readTree)
-//     },
-//     readCount: 0,
-//     cleanup: function() {
-//       var self = this;
-
-//       return RSVP.resolve()
-//         .then(function() {
-//           self.cleanupCount++
-//         });
-//     },
-//     cleanupCount: 0
-//   }
-// }
 
 
 // Builder subclass that returns fixturify objects from .build()
@@ -441,7 +427,7 @@ describe('Builder', function() {
 
       expect(outputBn.lastBuild.selfTime).to.be.greaterThan(0)
       expect(outputBn.lastBuild.totalTime).to.equal(
-        // addition order matters or rounding error will occur
+        // addition order matters here, or rounding errors will occur
         outputBn.lastBuild.selfTime + bn1.lastBuild.selfTime + bn2.lastBuild.selfTime
       )
     })
