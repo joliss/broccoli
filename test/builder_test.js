@@ -90,7 +90,7 @@ function SleepingPlugin(inputNodes) {
 }
 SleepingPlugin.prototype.build = function() {
   return new RSVP.Promise(function(resolve, reject) {
-    setTimeout(resolve, 20)
+    setTimeout(resolve, 10)
   })
 }
 
