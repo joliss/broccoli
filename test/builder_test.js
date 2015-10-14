@@ -63,6 +63,37 @@ FailingBuildPlugin.prototype.build = function() {
   throw this.errorObject
 }
 
+// // Plugin for testing asynchrony. buildFinished is a deferred (RSVP.defer()).
+// // The build will stall until you call node.finishBuild().
+// // To wait until the build starts, chain on node.buildStarted.
+// // Don't build more than once.
+// AsyncPlugin.prototype = Object.create(Plugin.prototype)
+// AsyncPlugin.prototype.constructor = AsyncPlugin
+// function AsyncPlugin(inputNodes) {
+//   Plugin.call(this, inputNodes || [])
+//   this.buildFinishedDeferred = RSVP.defer()
+//   this.buildStartedDeferred = RSVP.defer()
+//   this.buildStarted = this.buildStartedDeferred.promise
+// }
+// AsyncPlugin.prototype.build = function() {
+//   this.buildStartedDeferred.resolve()
+//   return this.buildFinishedDeferred.promise
+// }
+// AsyncPlugin.prototype.finishBuild = function() {
+//   this.buildFinishedDeferred.resolve()
+// }
+
+SleepingPlugin.prototype = Object.create(Plugin.prototype)
+SleepingPlugin.prototype.constructor = SleepingPlugin
+function SleepingPlugin(inputNodes) {
+  Plugin.call(this, inputNodes || [])
+}
+SleepingPlugin.prototype.build = function() {
+  return new RSVP.Promise(function(resolve, reject) {
+    setTimeout(resolve, 20)
+  })
+}
+
 
 // function countingTree(readFn) {
 //   return {
@@ -102,6 +133,12 @@ function buildToFixture(node) {
   var fixtureBuilder = new FixtureBuilder(node)
   return fixtureBuilder.build().finally(fixtureBuilder.cleanup.bind(fixtureBuilder))
 }
+
+// function sleep() {
+//   return new RSVP.Promise(function(resolve, reject) {
+//     setTimeout(resolve, 20)
+//   })
+// }
 
 
 describe('Builder', function() {
@@ -358,7 +395,33 @@ describe('Builder', function() {
     })
   })
 
-  it('reports node timings')
+  it('reports node timings', function() {
+    var node1 = new SleepingPlugin(['test/fixtures/basic'])
+    var node2 = new SleepingPlugin
+    var outputNode = new SleepingPlugin([node1, node2])
+    builder = new Builder(outputNode)
+    return builder.build().then(function() {
+      var sourceBn = builder.builderNodes[0]
+      var bn1 = builder.builderNodes[1]
+      var bn2 = builder.builderNodes[2]
+      var outputBn = builder.builderNodes[3]
+
+      expect(sourceBn.lastBuild.buildId).to.equal(0)
+      expect(sourceBn.lastBuild.selfTime).to.equal(0)
+      expect(sourceBn.lastBuild.totalTime).to.equal(0)
+
+      expect(bn1.lastBuild.selfTime).to.be.greaterThan(0)
+      expect(bn1.lastBuild.totalTime).to.equal(bn1.lastBuild.selfTime)
+      expect(bn2.lastBuild.selfTime).to.be.greaterThan(0)
+      expect(bn2.lastBuild.totalTime).to.equal(bn2.lastBuild.selfTime)
+
+      expect(outputBn.lastBuild.selfTime).to.be.greaterThan(0)
+      expect(outputBn.lastBuild.totalTime).to.equal(
+        // addition order matters or rounding error will occur
+        outputBn.lastBuild.selfTime + bn1.lastBuild.selfTime + bn2.lastBuild.selfTime
+      )
+    })
+  })
 
   describe('event handling', function() {
     var events
@@ -389,6 +452,17 @@ describe('Builder', function() {
           expect(events).to.deep.equal(
             ['start', 'nodeStart:0', 'nodeEnd:0', 'end'])
         })
+    })
+
+    // This test case is really unrelated to event handling, but getting the
+    // event list makes it so much easier to test
+    it('allows for asynchronous building', function() {
+      builder = new Builder(new MergeTrees([new SleepingPlugin]))
+      setupEventHandlers()
+      return builder.build().then(function() {
+        expect(events).to.deep.equal(
+          ['start', 'nodeStart:0', 'nodeEnd:0', 'nodeStart:1', 'nodeEnd:1', 'end'])
+      })
     })
   })
 
