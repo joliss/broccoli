@@ -464,66 +464,82 @@ describe('Builder', function() {
   })
 
   describe('builder nodes', function() {
-    it('has useful inspect output (for console.log)', function() {
-      // var sourceNode = new WatchedDir('test/fixtures/basic')
-      // var transformNode = new MergeTrees([sourceNode])
-      // builder = new Builder(transformNode)
-      // var sourceBn = builder.builderNodes[0]
-      // var transformBn = builder.builderNodes[1]
-      // expect(sourceBn.inspect()).to.equal('x')
-      // expect(transformBn.inspect()).to.equal('x')
+    var watchedSourceBn, unwatchedSourceBn, transformBn
+
+    beforeEach(function() {
+      var watchedSourceNode = new WatchedDir('test/fixtures/basic')
+      var unwatchedSourceNode = new UnwatchedDir('test/fixtures/basic')
+      var transformNode = new MergeTrees([watchedSourceNode, unwatchedSourceNode], { overwrite: true })
+      builder = new Builder(transformNode)
+      watchedSourceBn = builder.builderNodes[0]
+      unwatchedSourceBn = builder.builderNodes[1]
+      transformBn = builder.builderNodes[2]
+    })
+
+    it('has .toString value useful for debugging', function() {
+      expect(watchedSourceBn + '').to.equal('[BuilderNode:0 test/fixtures/basic]')
+      expect(unwatchedSourceBn + '').to.equal('[BuilderNode:1 test/fixtures/basic (unwatched)]')
+      expect(transformBn + '').to.match(/\[BuilderNode:2 "BroccoliMergeTrees" inputBuilderNodes:\[0,1\] at .+\]/)
+
+      // Reports timing after first build
+      expect(transformBn + '').not.to.match(/\([0-9]+ ms\)/)
+      return builder.build().then(function() {
+        expect(transformBn + '').to.match(/\([0-9]+ ms\)/)
+      })
+    })
+
+    it('has .toJSON representation useful for exporting for visualization', function() {
+      expect(watchedSourceBn.toJSON()).to.deep.equal({
+        id: 0,
+        pluginInterface: {
+          nodeType: 'source',
+          sourceDirectory: 'test/fixtures/basic',
+          watched: true,
+          name: 'WatchedDir',
+          annotation: null
+        },
+        description: 'WatchedDir',
+        inputBuilderNodes: [],
+        cachePath: null,
+        outputPath: 'test/fixtures/basic',
+        lastBuild: null
+      })
+
+      expect(transformBn.toJSON().lastBuild).to.be.null
+      return builder.build().then(function() {
+        var transformBnJSON = transformBn.toJSON()
+
+        // Fuzzy matches first
+        expect(transformBnJSON.cachePath).to.be.a('string')
+        expect(transformBnJSON.outputPath).to.be.a('string')
+        transformBnJSON.cachePath = '/some/path'
+        transformBnJSON.outputPath = '/some/path'
+        expect(transformBnJSON.lastBuild.buildId).to.be.a('number')
+        expect(transformBnJSON.lastBuild.selfTime).to.be.a('number')
+        expect(transformBnJSON.lastBuild.totalTime).to.be.a('number')
+        transformBnJSON.lastBuild.buildId = 1
+        transformBnJSON.lastBuild.selfTime = 1
+        transformBnJSON.lastBuild.totalTime = 1
+
+        expect(transformBnJSON).to.deep.equal({
+          id: 2,
+          pluginInterface: {
+            nodeType: 'transform',
+            name: 'BroccoliMergeTrees',
+            annotation: null,
+            persistentOutput: false
+          },
+          lastBuild: {
+            buildId: 1,
+            selfTime: 1,
+            totalTime: 1
+          },
+          description: 'BroccoliMergeTrees',
+          inputBuilderNodes: [ 0, 1 ],
+          cachePath: '/some/path',
+          outputPath: '/some/path'
+        })
+      })
     })
   })
-
-  // it('tree graph', function() {
-  //   var parent = countingTree(function(readTree) {
-  //     return readTree(child).then(function(dir) {
-  //       return new RSVP.Promise(function(resolve, reject) {
-  //         setTimeout(function() { resolve('parentTreeDir') }, 30)
-  //       })
-  //     })
-  //   })
-
-  //   var child = countingTree(function(readTree) {
-  //     return readTree('srcDir').then(function(dir) {
-  //       return new RSVP.Promise(function(resolve, reject) {
-  //         setTimeout(function() { resolve('childTreeDir') }, 20)
-  //       })
-  //     })
-  //   })
-
-  //   var timeEqual = function(a, b) {
-  //     expect(a).to.be.a('number')
-
-  //     // do not run timing assertions in Travis builds
-  //     // the actual results of process.hrtime() are not
-  //     // reliable
-  //     if (process.env.CI !== 'true') {
-  //       expect(a).to.be.within(b - 5e6, b + 5e6)
-  //     }
-  //   }
-
-  //   var builder = new Builder(parent)
-  //   return builder.build().then(function(hash) {
-  //     expect(hash.directory).to.equal('parentTreeDir')
-  //     var parentNode = hash.graph
-  //     expect(parentNode.directory).to.equal('parentTreeDir')
-  //     expect(parentNode.tree).to.equal(parent)
-  //     timeEqual(parentNode.totalTime, 50e6)
-  //     timeEqual(parentNode.selfTime, 30e6)
-  //     expect(parentNode.subtrees.length).to.equal(1)
-  //     var childNode = parentNode.subtrees[0]
-  //     expect(childNode.directory).to.equal('childTreeDir')
-  //     expect(childNode.tree).to.equal(child)
-  //     timeEqual(childNode.totalTime, 20e6)
-  //     timeEqual(childNode.selfTime, 20e6)
-  //     expect(childNode.subtrees.length).to.equal(1)
-  //     var leafNode = childNode.subtrees[0]
-  //     expect(leafNode.directory).to.equal('srcDir')
-  //     expect(leafNode.tree).to.equal('srcDir')
-  //     expect(leafNode.totalTime).to.equal(0)
-  //     expect(leafNode.selfTime).to.equal(0)
-  //     expect(leafNode.subtrees.length).to.equal(0)
-  //   })
-  // })
 })
