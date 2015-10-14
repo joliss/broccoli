@@ -63,25 +63,25 @@ FailingBuildPlugin.prototype.build = function() {
   throw this.errorObject
 }
 
-// // Plugin for testing asynchrony. buildFinished is a deferred (RSVP.defer()).
-// // The build will stall until you call node.finishBuild().
-// // To wait until the build starts, chain on node.buildStarted.
-// // Don't build more than once.
-// AsyncPlugin.prototype = Object.create(Plugin.prototype)
-// AsyncPlugin.prototype.constructor = AsyncPlugin
-// function AsyncPlugin(inputNodes) {
-//   Plugin.call(this, inputNodes || [])
-//   this.buildFinishedDeferred = RSVP.defer()
-//   this.buildStartedDeferred = RSVP.defer()
-//   this.buildStarted = this.buildStartedDeferred.promise
-// }
-// AsyncPlugin.prototype.build = function() {
-//   this.buildStartedDeferred.resolve()
-//   return this.buildFinishedDeferred.promise
-// }
-// AsyncPlugin.prototype.finishBuild = function() {
-//   this.buildFinishedDeferred.resolve()
-// }
+// Plugin for testing asynchrony. buildFinished is a deferred (RSVP.defer()).
+// The build will stall until you call node.finishBuild().
+// To wait until the build starts, chain on node.buildStarted.
+// Don't build more than once.
+AsyncPlugin.prototype = Object.create(Plugin.prototype)
+AsyncPlugin.prototype.constructor = AsyncPlugin
+function AsyncPlugin(inputNodes) {
+  Plugin.call(this, inputNodes || [])
+  this.buildFinishedDeferred = RSVP.defer()
+  this.buildStartedDeferred = RSVP.defer()
+  this.buildStarted = this.buildStartedDeferred.promise
+}
+AsyncPlugin.prototype.build = function() {
+  this.buildStartedDeferred.resolve()
+  return this.buildFinishedDeferred.promise
+}
+AsyncPlugin.prototype.finishBuild = function() {
+  this.buildFinishedDeferred.resolve()
+}
 
 SleepingPlugin.prototype = Object.create(Plugin.prototype)
 SleepingPlugin.prototype.constructor = SleepingPlugin
@@ -134,11 +134,11 @@ function buildToFixture(node) {
   return fixtureBuilder.build().finally(fixtureBuilder.cleanup.bind(fixtureBuilder))
 }
 
-// function sleep() {
-//   return new RSVP.Promise(function(resolve, reject) {
-//     setTimeout(resolve, 20)
-//   })
-// }
+function sleep() {
+  return new RSVP.Promise(function(resolve, reject) {
+    setTimeout(resolve, 20)
+  })
+}
 
 
 describe('Builder', function() {
@@ -153,9 +153,33 @@ describe('Builder', function() {
   })
 
   describe('"transform" nodes (.build)', function() {
-    it('builds a single node', function() {
+    it('builds a single node, repeatedly', function() {
       var node = new Fixturify({ 'foo.txt': 'OK' })
-      return expect(buildToFixture(node)).to.eventually.deep.equal({ 'foo.txt': 'OK' })
+      var buildSpy = sinon.spy(node, 'build')
+      builder = new FixtureBuilder(node)
+      return expect(builder.build()).to.eventually.deep.equal({ 'foo.txt': 'OK' })
+        .then(function() {
+          return expect(builder.build()).to.eventually.deep.equal({ 'foo.txt': 'OK' })
+        })
+        .then(function() {
+          expect(buildSpy).to.have.been.calledTwice
+        })
+    })
+
+    it('allows for asynchronous build', function() {
+      var asyncNode = new AsyncPlugin()
+      var outputNode = new MergeTrees([asyncNode])
+      var buildSpy = sinon.spy(outputNode, 'build')
+      builder = new Builder(outputNode)
+      var buildPromise = builder.build()
+      return asyncNode.buildStarted.then(sleep).then(function() {
+        expect(buildSpy).not.to.have.been.called
+        asyncNode.finishBuild()
+      }).then(function() {
+        return buildPromise
+      }).then(function() {
+        expect(buildSpy).to.have.been.called
+      })
     })
 
     it('builds nodes reachable through multiple paths only once', function() {
@@ -435,12 +459,20 @@ describe('Builder', function() {
     }
 
     it('triggers RSVP events', function() {
-      builder = new Builder(new MergeTrees([new Fixturify({})]))
+      builder = new Builder(new MergeTrees([new Fixturify({}), 'test/fixtures/basic']))
       setupEventHandlers()
       return builder.build()
         .then(function() {
-          expect(events).to.deep.equal(
-            ['start', 'nodeStart:0', 'nodeEnd:0', 'nodeStart:1', 'nodeEnd:1', 'end'])
+          expect(events).to.deep.equal([
+            'start',
+            'nodeStart:0',
+            'nodeEnd:0',
+            'nodeStart:1',
+            'nodeEnd:1',
+            'nodeStart:2',
+            'nodeEnd:2',
+            'end'
+          ])
         })
     })
 
@@ -449,20 +481,13 @@ describe('Builder', function() {
       setupEventHandlers()
       return expect(builder.build()).to.be.rejected
         .then(function() {
-          expect(events).to.deep.equal(
-            ['start', 'nodeStart:0', 'nodeEnd:0', 'end'])
+          expect(events).to.deep.equal([
+            'start',
+            'nodeStart:0',
+            'nodeEnd:0',
+            'end'
+          ])
         })
-    })
-
-    // This test case is really unrelated to event handling, but getting the
-    // event list makes it so much easier to test
-    it('allows for asynchronous building', function() {
-      builder = new Builder(new MergeTrees([new SleepingPlugin]))
-      setupEventHandlers()
-      return builder.build().then(function() {
-        expect(events).to.deep.equal(
-          ['start', 'nodeStart:0', 'nodeEnd:0', 'nodeStart:1', 'nodeEnd:1', 'end'])
-      })
     })
   })
 
