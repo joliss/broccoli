@@ -430,7 +430,7 @@ describe('Builder', function() {
       var bn2 = builder.builderNodes[2]
       var outputBn = builder.builderNodes[3]
 
-      expect(sourceBn.lastBuild.buildId).to.equal(0)
+      expect(sourceBn.lastBuild.buildId).to.equal(1)
       expect(sourceBn.lastBuild.selfTime).to.equal(0)
       expect(sourceBn.lastBuild.totalTime).to.equal(0)
 
