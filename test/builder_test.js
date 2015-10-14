@@ -1,5 +1,4 @@
 var fs = require('fs')
-var path = require('path')
 var os = require('os')
 var rimraf = require('rimraf')
 var RSVP = require('rsvp')
@@ -20,6 +19,7 @@ var sinonChai = require('sinon-chai'); chai.use(sinonChai)
 
 // TODO:
 // integration test against multiple plugin versions
+// remove dependencies on Fixturify and MergeTrees
 
 
 
@@ -27,37 +27,6 @@ RSVP.on('error', function(error) {
   throw error
 })
 
-
-CountingPlugin.prototype = Object.create(Plugin.prototype)
-CountingPlugin.prototype.constructor = CountingPlugin
-function CountingPlugin(inputNodes) {
-  Plugin.call(this, inputNodes || [])
-  this.buildCount = 0
-}
-
-CountingPlugin.prototype.build = function() {
-  this.buildCount++
-}
-
-
-TaggingPlugin.prototype = Object.create(Plugin.prototype)
-TaggingPlugin.prototype.constructor = TaggingPlugin
-function TaggingPlugin(inputNodes, tag) {
-  Plugin.call(this, inputNodes)
-  this.tag = tag
-  this.buildCount = 0
-}
-
-TaggingPlugin.prototype.build = function() {
-  for (var i = 0; i < this.inputPaths.length; i++) {
-    var entries = fs.readdirSync(this.inputPaths[i])
-    for (var j = 0; j < entries.length; j++) {
-      fs.writeFileSync(path.join(this.outputPath, entries[j]),
-        this.tag + '(' + i + '): ' + fs.readFileSync(path.join(this.inputPaths[i])))
-    }
-  }
-  this.buildCount++
-}
 
 FailingBuildPlugin.prototype = Object.create(Plugin.prototype)
 FailingBuildPlugin.prototype.constructor = FailingBuildPlugin
@@ -329,30 +298,36 @@ describe('Builder', function() {
     })
 
     describe('failing node setup', function() {
+      // Failing node setup is rare, but it could happen if a plugin fails to
+      // create some compiler instance
       FailingSetupPlugin.prototype = Object.create(Plugin.prototype)
       FailingSetupPlugin.prototype.constructor = FailingSetupPlugin
-      function FailingSetupPlugin() {
+      function FailingSetupPlugin(errorObject) {
         Plugin.call(this, [])
+        this.errorObject = errorObject
       }
       FailingSetupPlugin.prototype.getCallbackObject = function() {
-        // This can happen if we tried to instantiate some compiler here
-        throw new Error('foo error')
+        throw this.errorObject
       }
 
       it('reports failing node and instantiation stack, and cleans up temporary directory', function() {
-        var node = new FailingSetupPlugin
+        var node = new FailingSetupPlugin(new Error('foo error'))
         expect(function() {
           new Builder(node, { tmpdir: 'test/tmp' })
         }).to.throw(Builder.NodeSetupError, /foo error\nthrown from "FailingSetupPlugin"\n-~- instantiated here: -~-/)
         expect(hasBroccoliTmpDir('test/tmp')).to.be.false
       })
+
+      it('supports string errors', function() {
+        var node = new FailingSetupPlugin('bar error')
+        expect(function() {
+          new Builder(node, { tmpdir: 'test/tmp' })
+        }).to.throw(Builder.NodeSetupError, /bar error\nthrown from "FailingSetupPlugin"\n-~- instantiated here: -~-/)
+        expect(hasBroccoliTmpDir('test/tmp')).to.be.false
+      })
     })
 
     describe('failing node build', function() {
-      // function MyError(message) {
-      //   this.message = message
-      // }
-
       it('rethrows as rich BuildError', function() {
         var originalError = new Error('whoops')
         originalError.file = 'somefile.js'
@@ -401,6 +376,17 @@ describe('Builder', function() {
         builder = new Builder(new FailingBuildPlugin(originalError))
         return expect(builder.build()).to.be.rejectedWith(Builder.BuildError,
           /whoops\nthrown from "FailingBuildPlugin"\n-~- instantiated here: -~-/)
+      })
+
+      it('handles string errors', function() {
+        builder = new Builder(new FailingBuildPlugin('string exception'))
+        return expect(builder.build()).to.be.rejectedWith(Builder.BuildError, /string exception/)
+      })
+
+      it('handles undefined errors', function() {
+        // Apparently this is a thing.
+        builder = new Builder(new FailingBuildPlugin(undefined))
+        return expect(builder.build()).to.be.rejectedWith(Builder.BuildError, /undefined/)
       })
     })
   })
@@ -474,6 +460,18 @@ describe('Builder', function() {
             'end'
           ])
         })
+    })
+  })
+
+  describe('builder nodes', function() {
+    it('has useful inspect output (for console.log)', function() {
+      // var sourceNode = new WatchedDir('test/fixtures/basic')
+      // var transformNode = new MergeTrees([sourceNode])
+      // builder = new Builder(transformNode)
+      // var sourceBn = builder.builderNodes[0]
+      // var transformBn = builder.builderNodes[1]
+      // expect(sourceBn.inspect()).to.equal('x')
+      // expect(transformBn.inspect()).to.equal('x')
     })
   })
 
