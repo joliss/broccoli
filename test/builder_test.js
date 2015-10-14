@@ -5,7 +5,7 @@ var RSVP = require('rsvp')
 var broccoli = require('..')
 var Builder = broccoli.Builder
 var Plugin = require('broccoli-plugin')
-var MergeTrees = require('broccoli-merge-trees')
+var symlinkOrCopySync = require('symlink-or-copy').sync
 var broccoliSource = require('broccoli-source')
 var WatchedDir = broccoliSource.WatchedDir
 var UnwatchedDir = broccoliSource.UnwatchedDir
@@ -18,7 +18,6 @@ var sinonChai = require('sinon-chai'); chai.use(sinonChai)
 
 // TODO:
 // integration test against multiple plugin versions
-// remove dependency on MergeTrees
 
 
 
@@ -29,11 +28,22 @@ RSVP.on('error', function(error) {
 // This plugin writes foo.js into its outputPath
 VeggiesPlugin.prototype = Object.create(Plugin.prototype)
 VeggiesPlugin.prototype.constructor = VeggiesPlugin
-function VeggiesPlugin(inputNodes) {
-  Plugin.call(this, inputNodes || [])
+function VeggiesPlugin(inputNodes, options) {
+  Plugin.call(this, [], options)
 }
 VeggiesPlugin.prototype.build = function() {
   fs.writeFileSync(this.outputPath + '/veggies.txt', 'tasty')
+}
+
+MergePlugin.prototype = Object.create(Plugin.prototype)
+MergePlugin.prototype.constructor = MergePlugin
+function MergePlugin(inputNodes, options) {
+  Plugin.call(this, inputNodes, options)
+}
+MergePlugin.prototype.build = function() {
+  for (var i = 0; i < this.inputPaths.length; i++) {
+    symlinkOrCopySync(this.inputPaths[i], this.outputPath + '/' + i)
+  }
 }
 
 FailingBuildPlugin.prototype = Object.create(Plugin.prototype)
@@ -131,7 +141,7 @@ describe('Builder', function() {
 
     it('allows for asynchronous build', function() {
       var asyncNode = new AsyncPlugin()
-      var outputNode = new MergeTrees([asyncNode])
+      var outputNode = new MergePlugin([asyncNode])
       var buildSpy = sinon.spy(outputNode, 'build')
       builder = new Builder(outputNode)
       var buildPromise = builder.build()
@@ -148,11 +158,13 @@ describe('Builder', function() {
     it('builds nodes reachable through multiple paths only once', function() {
       var src = new VeggiesPlugin
       var buildSpy = sinon.spy(src, 'build')
-      var outputNode = new MergeTrees([src, src], { overwrite: true })
-      return expect(buildToFixture(outputNode)).to.eventually.deep.equal({ 'veggies.txt': 'tasty' })
-        .then(function() {
-          expect(buildSpy).to.have.been.calledOnce
-        })
+      var outputNode = new MergePlugin([src, src], { overwrite: true })
+      return expect(buildToFixture(outputNode)).to.eventually.deep.equal({
+        '0': { 'veggies.txt': 'tasty' },
+        '1': { 'veggies.txt': 'tasty' }
+      }).then(function() {
+        expect(buildSpy).to.have.been.calledOnce
+      })
     })
 
     it('supplies a cachePath', function() {
@@ -206,7 +218,7 @@ describe('Builder', function() {
 
     it('records source directories only once', function() {
       var src = 'test/fixtures/basic'
-      builder = new FixtureBuilder(new MergeTrees([src, src]))
+      builder = new FixtureBuilder(new MergePlugin([src, src]))
       expect(builder.watchedPaths).to.deep.equal(['test/fixtures/basic'])
     })
   })
@@ -226,8 +238,6 @@ describe('Builder', function() {
       }).to.throw(Builder.BuilderError, 'Cycle in node graph: CyclicalPlugin -> CyclicalPlugin')
     })
 
-    it('handles string exceptions in all sorts of places')
-
     describe('invalid nodes', function() {
       var invalidNode = { 'not a node': true }
       var readBasedNode = { read: function() { }, cleanup: function() { }, description: 'an old node' }
@@ -240,15 +250,15 @@ describe('Builder', function() {
 
       it('catches invalid input nodes', function() {
         expect(function() {
-          new Builder(new MergeTrees([invalidNode], { annotation: 'some annotation' }))
-        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got \[object Object\]\nused as input node to "BroccoliMergeTrees: some annotation"\n-~- instantiated here: -~-/)
+          new Builder(new MergePlugin([invalidNode], { annotation: 'some annotation' }))
+        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got \[object Object\]\nused as input node to "MergePlugin: some annotation"\n-~- instantiated here: -~-/)
       })
 
       it('catches undefined input nodes', function() {
         // Very common subcase of invalid input nodes
         expect(function() {
-          new Builder(new MergeTrees([undefined], { annotation: 'some annotation' }))
-        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got undefined\nused as input node to "BroccoliMergeTrees: some annotation"\n-~- instantiated here: -~-/)
+          new Builder(new MergePlugin([undefined], { annotation: 'some annotation' }))
+        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got undefined\nused as input node to "MergePlugin: some annotation"\n-~- instantiated here: -~-/)
       })
 
       it('catches .read/.rebuild-based root nodes', function() {
@@ -259,8 +269,8 @@ describe('Builder', function() {
 
       it('catches .read/.rebuild-based input nodes', function() {
         expect(function() {
-          new Builder(new MergeTrees([readBasedNode], { annotation: 'some annotation' }))
-        }).to.throw(Builder.InvalidNodeError, /\.read\/\.rebuild API[^\n]*"an old node"\nused as input node to "BroccoliMergeTrees: some annotation"\n-~- instantiated here: -~-/)
+          new Builder(new MergePlugin([readBasedNode], { annotation: 'some annotation' }))
+        }).to.throw(Builder.InvalidNodeError, /\.read\/\.rebuild API[^\n]*"an old node"\nused as input node to "MergePlugin: some annotation"\n-~- instantiated here: -~-/)
       })
     })
   })
@@ -345,10 +355,10 @@ describe('Builder', function() {
         originalError.randomProperty = 'is ignored'
 
         var node = new FailingBuildPlugin(originalError, { annotation: 'annotated' })
-        // Wrapping in MergeTrees shouldn't make a difference. This way we
+        // Wrapping in MergePlugin shouldn't make a difference. This way we
         // test that we don't have multiple catch clauses applying, wrapping
         // the error repeatedly
-        node = new MergeTrees([node])
+        node = new MergePlugin([node])
         builder = new Builder(node)
 
         return builder.build()
@@ -439,7 +449,7 @@ describe('Builder', function() {
     }
 
     it('triggers RSVP events', function() {
-      builder = new Builder(new MergeTrees([new VeggiesPlugin, 'test/fixtures/basic']))
+      builder = new Builder(new MergePlugin([new VeggiesPlugin, 'test/fixtures/basic']))
       setupEventHandlers()
       return builder.build()
         .then(function() {
@@ -457,7 +467,7 @@ describe('Builder', function() {
     })
 
     it('triggers matching nodeEnd event when a node fails to build', function() {
-      builder = new Builder(new MergeTrees([new FailingBuildPlugin(new Error('whoops'))]))
+      builder = new Builder(new MergePlugin([new FailingBuildPlugin(new Error('whoops'))]))
       setupEventHandlers()
       return expect(builder.build()).to.be.rejected
         .then(function() {
@@ -477,7 +487,7 @@ describe('Builder', function() {
     beforeEach(function() {
       var watchedSourceNode = new WatchedDir('test/fixtures/basic')
       var unwatchedSourceNode = new UnwatchedDir('test/fixtures/basic')
-      var transformNode = new MergeTrees([watchedSourceNode, unwatchedSourceNode], { overwrite: true })
+      var transformNode = new MergePlugin([watchedSourceNode, unwatchedSourceNode], { overwrite: true })
       builder = new Builder(transformNode)
       watchedSourceBn = builder.builderNodes[0]
       unwatchedSourceBn = builder.builderNodes[1]
@@ -487,7 +497,7 @@ describe('Builder', function() {
     it('has .toString value useful for debugging', function() {
       expect(watchedSourceBn + '').to.equal('[BuilderNode:0 test/fixtures/basic]')
       expect(unwatchedSourceBn + '').to.equal('[BuilderNode:1 test/fixtures/basic (unwatched)]')
-      expect(transformBn + '').to.match(/\[BuilderNode:2 "BroccoliMergeTrees" inputBuilderNodes:\[0,1\] at .+\]/)
+      expect(transformBn + '').to.match(/\[BuilderNode:2 "MergePlugin" inputBuilderNodes:\[0,1\] at .+\]/)
 
       // Reports timing after first build
       expect(transformBn + '').not.to.match(/\([0-9]+ ms\)/)
@@ -533,7 +543,7 @@ describe('Builder', function() {
           id: 2,
           pluginInterface: {
             nodeType: 'transform',
-            name: 'BroccoliMergeTrees',
+            name: 'MergePlugin',
             annotation: null,
             persistentOutput: false
           },
@@ -542,7 +552,7 @@ describe('Builder', function() {
             selfTime: 1,
             totalTime: 1
           },
-          description: 'BroccoliMergeTrees',
+          description: 'MergePlugin',
           inputBuilderNodes: [ 0, 1 ],
           cachePath: '/some/path',
           outputPath: '/some/path'
