@@ -34,7 +34,6 @@
     "underscore.string": "^3.2.2"
   },
   "devDependencies": {
-    "broccoli-fixturify": "^0.1.0",
     "broccoli-merge-trees": "^0.2.3",
     "broccoli-plugin": "^1.2.0",
     "chai": "^3.3.0",

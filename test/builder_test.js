@@ -6,7 +6,6 @@ var broccoli = require('..')
 var Builder = broccoli.Builder
 var Plugin = require('broccoli-plugin')
 var MergeTrees = require('broccoli-merge-trees')
-var Fixturify = require('broccoli-fixturify')
 var broccoliSource = require('broccoli-source')
 var WatchedDir = broccoliSource.WatchedDir
 var UnwatchedDir = broccoliSource.UnwatchedDir
@@ -19,7 +18,7 @@ var sinonChai = require('sinon-chai'); chai.use(sinonChai)
 
 // TODO:
 // integration test against multiple plugin versions
-// remove dependencies on Fixturify and MergeTrees
+// remove dependency on MergeTrees
 
 
 
@@ -27,6 +26,15 @@ RSVP.on('error', function(error) {
   throw error
 })
 
+// This plugin writes foo.js into its outputPath
+VeggiesPlugin.prototype = Object.create(Plugin.prototype)
+VeggiesPlugin.prototype.constructor = VeggiesPlugin
+function VeggiesPlugin(inputNodes) {
+  Plugin.call(this, inputNodes || [])
+}
+VeggiesPlugin.prototype.build = function() {
+  fs.writeFileSync(this.outputPath + '/veggies.txt', 'tasty')
+}
 
 FailingBuildPlugin.prototype = Object.create(Plugin.prototype)
 FailingBuildPlugin.prototype.constructor = FailingBuildPlugin
@@ -109,12 +117,12 @@ describe('Builder', function() {
 
   describe('"transform" nodes (.build)', function() {
     it('builds a single node, repeatedly', function() {
-      var node = new Fixturify({ 'foo.txt': 'OK' })
+      var node = new VeggiesPlugin
       var buildSpy = sinon.spy(node, 'build')
       builder = new FixtureBuilder(node)
-      return expect(builder.build()).to.eventually.deep.equal({ 'foo.txt': 'OK' })
+      return expect(builder.build()).to.eventually.deep.equal({ 'veggies.txt': 'tasty' })
         .then(function() {
-          return expect(builder.build()).to.eventually.deep.equal({ 'foo.txt': 'OK' })
+          return expect(builder.build()).to.eventually.deep.equal({ 'veggies.txt': 'tasty' })
         })
         .then(function() {
           expect(buildSpy).to.have.been.calledTwice
@@ -138,10 +146,10 @@ describe('Builder', function() {
     })
 
     it('builds nodes reachable through multiple paths only once', function() {
-      var src = new Fixturify({ 'foo.txt': 'OK' })
+      var src = new VeggiesPlugin
       var buildSpy = sinon.spy(src, 'build')
       var outputNode = new MergeTrees([src, src], { overwrite: true })
-      return expect(buildToFixture(outputNode)).to.eventually.deep.equal({ 'foo.txt': 'OK' })
+      return expect(buildToFixture(outputNode)).to.eventually.deep.equal({ 'veggies.txt': 'tasty' })
         .then(function() {
           expect(buildSpy).to.have.been.calledOnce
         })
@@ -278,19 +286,19 @@ describe('Builder', function() {
     }
 
     it('creates temporary directory in os.tmpdir() by default', function() {
-      builder = new Builder(new Fixturify({}))
+      builder = new Builder(new VeggiesPlugin)
       // This can have false positives from other Broccoli instances, but it's
       // better than nothing, and better than trying to be sophisticated
       expect(hasBroccoliTmpDir(os.tmpdir())).to.be.true
     })
 
     it('creates temporary directory in directory given by tmpdir options', function() {
-      builder = new Builder(new Fixturify({}), { tmpdir: 'test/tmp' })
+      builder = new Builder(new VeggiesPlugin, { tmpdir: 'test/tmp' })
       expect(hasBroccoliTmpDir('test/tmp')).to.be.true
     })
 
     it('removes temporary directory when .cleanup() is called', function() {
-      builder = new Builder(new Fixturify({}), { tmpdir: 'test/tmp' })
+      builder = new Builder(new VeggiesPlugin, { tmpdir: 'test/tmp' })
       expect(hasBroccoliTmpDir('test/tmp')).to.be.true
       builder.cleanup()
       builder = null
@@ -431,7 +439,7 @@ describe('Builder', function() {
     }
 
     it('triggers RSVP events', function() {
-      builder = new Builder(new MergeTrees([new Fixturify({}), 'test/fixtures/basic']))
+      builder = new Builder(new MergeTrees([new VeggiesPlugin, 'test/fixtures/basic']))
       setupEventHandlers()
       return builder.build()
         .then(function() {
