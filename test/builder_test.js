@@ -273,7 +273,7 @@ describe('Builder', function() {
       it('catches invalid root nodes', function() {
         expect(function() {
           new Builder(invalidNode)
-        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got \[object Object\] as root node$/)
+        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got \[object Object\] as output node$/)
       })
 
       it('catches invalid input nodes', function() {
@@ -292,7 +292,7 @@ describe('Builder', function() {
       it('catches .read/.rebuild-based root nodes', function() {
         expect(function() {
           new Builder(readBasedNode)
-        }).to.throw(Builder.InvalidNodeError, /\.read\/\.rebuild API[^\n]*"an old node" as root node/)
+        }).to.throw(Builder.InvalidNodeError, /\.read\/\.rebuild API[^\n]*"an old node" as output node/)
       })
 
       it('catches .read/.rebuild-based input nodes', function() {
@@ -454,19 +454,19 @@ describe('Builder', function() {
       var bn2 = builder.builderNodes[2]
       var outputBn = builder.builderNodes[3]
 
-      expect(sourceBn.lastBuild.buildId).to.equal(1)
-      expect(sourceBn.lastBuild.selfTime).to.equal(0)
-      expect(sourceBn.lastBuild.totalTime).to.equal(0)
+      expect(sourceBn.buildState.buildId).to.equal(1)
+      expect(sourceBn.buildState.selfTime).to.equal(0)
+      expect(sourceBn.buildState.totalTime).to.equal(0)
 
-      expect(bn1.lastBuild.selfTime).to.be.greaterThan(0)
-      expect(bn1.lastBuild.totalTime).to.equal(bn1.lastBuild.selfTime)
-      expect(bn2.lastBuild.selfTime).to.be.greaterThan(0)
-      expect(bn2.lastBuild.totalTime).to.equal(bn2.lastBuild.selfTime)
+      expect(bn1.buildState.selfTime).to.be.greaterThan(0)
+      expect(bn1.buildState.totalTime).to.equal(bn1.buildState.selfTime)
+      expect(bn2.buildState.selfTime).to.be.greaterThan(0)
+      expect(bn2.buildState.totalTime).to.equal(bn2.buildState.selfTime)
 
-      expect(outputBn.lastBuild.selfTime).to.be.greaterThan(0)
-      expect(outputBn.lastBuild.totalTime).to.equal(
+      expect(outputBn.buildState.selfTime).to.be.greaterThan(0)
+      expect(outputBn.buildState.totalTime).to.equal(
         // addition order matters here, or rounding errors will occur
-        outputBn.lastBuild.selfTime + bn1.lastBuild.selfTime + bn2.lastBuild.selfTime
+        outputBn.buildState.selfTime + bn1.buildState.selfTime + bn2.buildState.selfTime
       )
     })
   })
@@ -554,10 +554,10 @@ describe('Builder', function() {
         inputBuilderNodes: [],
         cachePath: null,
         outputPath: 'test/fixtures/basic',
-        lastBuild: null
+        buildState: null
       })
 
-      expect(transformBn.toJSON().lastBuild).to.be.null
+      expect(transformBn.toJSON().buildState).to.be.null
       return builder.build().then(function() {
         var transformBnJSON = transformBn.toJSON()
 
@@ -566,12 +566,12 @@ describe('Builder', function() {
         expect(transformBnJSON.outputPath).to.be.a('string')
         transformBnJSON.cachePath = '/some/path'
         transformBnJSON.outputPath = '/some/path'
-        expect(transformBnJSON.lastBuild.buildId).to.be.a('number')
-        expect(transformBnJSON.lastBuild.selfTime).to.be.a('number')
-        expect(transformBnJSON.lastBuild.totalTime).to.be.a('number')
-        transformBnJSON.lastBuild.buildId = 1
-        transformBnJSON.lastBuild.selfTime = 1
-        transformBnJSON.lastBuild.totalTime = 1
+        expect(transformBnJSON.buildState.buildId).to.be.a('number')
+        expect(transformBnJSON.buildState.selfTime).to.be.a('number')
+        expect(transformBnJSON.buildState.totalTime).to.be.a('number')
+        transformBnJSON.buildState.buildId = 1
+        transformBnJSON.buildState.selfTime = 1
+        transformBnJSON.buildState.totalTime = 1
 
         expect(transformBnJSON).to.deep.equal({
           id: 2,
@@ -581,7 +581,7 @@ describe('Builder', function() {
             annotation: null,
             persistentOutput: false
           },
-          lastBuild: {
+          buildState: {
             buildId: 1,
             selfTime: 1,
             totalTime: 1
