@@ -71,8 +71,8 @@ function makePlugins(Plugin) {
   plugins.AsyncPlugin = AsyncPlugin
   AsyncPlugin.prototype = Object.create(Plugin.prototype)
   AsyncPlugin.prototype.constructor = AsyncPlugin
-  function AsyncPlugin(inputNodes) {
-    Plugin.call(this, inputNodes || [])
+  function AsyncPlugin(inputNodes, options) {
+    Plugin.call(this, inputNodes || [], options)
     this.buildFinishedDeferred = RSVP.defer()
     this.buildStartedDeferred = RSVP.defer()
     this.buildStarted = this.buildStartedDeferred.promise
