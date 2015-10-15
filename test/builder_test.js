@@ -208,7 +208,7 @@ describe('Builder', function() {
           return builder.build()
             .then(function() {
               expect(cachePath).to.be.ok
-              fs.accessSync(cachePath) // throws if it doesn't exist
+              expect(fs.existsSync(cachePath)).to.be.true
             })
         })
       })
