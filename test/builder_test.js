@@ -17,7 +17,6 @@ var broccoliSource = multidepPackages['broccoli-source']['1.1.0']()
 
 
 // TODO:
-// integration test against multiple plugin versions
 // test persistent output
 
 
@@ -364,7 +363,7 @@ describe('Builder', function() {
         expect(hasBroccoliTmpDir('test/tmp')).to.be.false
       })
 
-      it('supports string errors', function() {
+      it('supports string errors, and cleans up temporary directory', function() {
         var node = new FailingSetupPlugin('bar error')
         expect(function() {
           new Builder(node, { tmpdir: 'test/tmp' })
@@ -372,72 +371,72 @@ describe('Builder', function() {
         expect(hasBroccoliTmpDir('test/tmp')).to.be.false
       })
     })
+  })
 
-    describe('failing node build', function() {
-      multidepPackages['broccoli-plugin'].forEachVersion(function(version, Plugin) {
-        var plugins = makePlugins(Plugin)
+  describe('failing node build', function() {
+    multidepPackages['broccoli-plugin'].forEachVersion(function(version, Plugin) {
+      var plugins = makePlugins(Plugin)
 
-        describe('broccoli-plugin ' + version, function() {
-          it('rethrows as rich BuildError', function() {
-            var originalError = new Error('whoops')
-            originalError.file = 'somefile.js'
-            originalError.treeDir = '/some/dir'
-            originalError.line = 42
-            originalError.column = 3
-            originalError.randomProperty = 'is ignored'
+      describe('broccoli-plugin ' + version, function() {
+        it('rethrows as rich BuildError', function() {
+          var originalError = new Error('whoops')
+          originalError.file = 'somefile.js'
+          originalError.treeDir = '/some/dir'
+          originalError.line = 42
+          originalError.column = 3
+          originalError.randomProperty = 'is ignored'
 
-            var node = new plugins.FailingBuildPlugin(originalError, { annotation: 'annotated' })
-            // Wrapping in MergePlugin shouldn't make a difference. This way we
-            // test that we don't have multiple catch clauses applying, wrapping
-            // the error repeatedly
-            node = new plugins.MergePlugin([node])
-            builder = new Builder(node)
+          var node = new plugins.FailingBuildPlugin(originalError, { annotation: 'annotated' })
+          // Wrapping in MergePlugin shouldn't make a difference. This way we
+          // test that we don't have multiple catch clauses applying, wrapping
+          // the error repeatedly
+          node = new plugins.MergePlugin([node])
+          builder = new Builder(node)
 
-            return builder.build()
-              .then(function() {
-                throw new Error('Expected an error')
-              }, function(err) {
-                expect(err).to.be.an.instanceof(Builder.BuildError)
-                expect(err.stack).to.equal(originalError.stack, 'preserves original stack')
+          return builder.build()
+            .then(function() {
+              throw new Error('Expected an error')
+            }, function(err) {
+              expect(err).to.be.an.instanceof(Builder.BuildError)
+              expect(err.stack).to.equal(originalError.stack, 'preserves original stack')
 
-                expect(err.message).to.match(/somefile.js:42:4: whoops\nin \/some\/dir\nthrown from "FailingBuildPlugin: annotated"/)
-                expect(err.message).not.to.match(/instantiated here/, 'suppresses instantiation stack when .file is supplied')
+              expect(err.message).to.match(/somefile.js:42:4: whoops\nin \/some\/dir\nthrown from "FailingBuildPlugin: annotated"/)
+              expect(err.message).not.to.match(/instantiated here/, 'suppresses instantiation stack when .file is supplied')
 
-                expect(err.broccoliPayload.originalError).to.equal(originalError)
+              expect(err.broccoliPayload.originalError).to.equal(originalError)
 
-                // Reports offending node
-                expect(err.broccoliPayload.nodeId).to.equal(0)
-                expect(err.broccoliPayload.nodeName).to.equal('FailingBuildPlugin')
-                expect(err.broccoliPayload.nodeAnnotation).to.equal('annotated')
-                expect(err.broccoliPayload.instantiationStack).to.be.a('string')
+              // Reports offending node
+              expect(err.broccoliPayload.nodeId).to.equal(0)
+              expect(err.broccoliPayload.nodeName).to.equal('FailingBuildPlugin')
+              expect(err.broccoliPayload.nodeAnnotation).to.equal('annotated')
+              expect(err.broccoliPayload.instantiationStack).to.be.a('string')
 
-                // Passes on special properties
-                expect(err.broccoliPayload.file).to.equal('somefile.js')
-                expect(err.broccoliPayload.treeDir).to.equal('/some/dir')
-                expect(err.broccoliPayload.line).to.equal(42)
-                expect(err.broccoliPayload.column).to.equal(3)
-                expect(err.broccoliPayload).not.to.have.property('randomProperty')
-              })
-          })
+              // Passes on special properties
+              expect(err.broccoliPayload.file).to.equal('somefile.js')
+              expect(err.broccoliPayload.treeDir).to.equal('/some/dir')
+              expect(err.broccoliPayload.line).to.equal(42)
+              expect(err.broccoliPayload.column).to.equal(3)
+              expect(err.broccoliPayload).not.to.have.property('randomProperty')
+            })
+        })
 
-          it('reports the instantiationStack when no err.file is given', function() {
-            var originalError = new Error('whoops')
+        it('reports the instantiationStack when no err.file is given', function() {
+          var originalError = new Error('whoops')
 
-            builder = new Builder(new plugins.FailingBuildPlugin(originalError))
-            return expect(builder.build()).to.be.rejectedWith(Builder.BuildError,
-              /whoops\nthrown from "FailingBuildPlugin"\n-~- instantiated here: -~-/)
-          })
+          builder = new Builder(new plugins.FailingBuildPlugin(originalError))
+          return expect(builder.build()).to.be.rejectedWith(Builder.BuildError,
+            /whoops\nthrown from "FailingBuildPlugin"\n-~- instantiated here: -~-/)
+        })
 
-          it('handles string errors', function() {
-            builder = new Builder(new plugins.FailingBuildPlugin('string exception'))
-            return expect(builder.build()).to.be.rejectedWith(Builder.BuildError, /string exception/)
-          })
+        it('handles string errors', function() {
+          builder = new Builder(new plugins.FailingBuildPlugin('string exception'))
+          return expect(builder.build()).to.be.rejectedWith(Builder.BuildError, /string exception/)
+        })
 
-          it('handles undefined errors', function() {
-            // Apparently this is a thing.
-            builder = new Builder(new plugins.FailingBuildPlugin(undefined))
-            return expect(builder.build()).to.be.rejectedWith(Builder.BuildError, /undefined/)
-          })
+        it('handles undefined errors', function() {
+          // Apparently this is a thing.
+          builder = new Builder(new plugins.FailingBuildPlugin(undefined))
+          return expect(builder.build()).to.be.rejectedWith(Builder.BuildError, /undefined/)
         })
       })
     })
