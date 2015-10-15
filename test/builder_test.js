@@ -550,7 +550,7 @@ describe('Builder', function() {
           name: 'WatchedDir',
           annotation: null
         },
-        description: 'WatchedDir',
+        label: 'WatchedDir',
         inputBuilderNodes: [],
         cachePath: null,
         outputPath: 'test/fixtures/basic',
@@ -586,7 +586,7 @@ describe('Builder', function() {
             selfTime: 1,
             totalTime: 1
           },
-          description: 'MergePlugin',
+          label: 'MergePlugin',
           inputBuilderNodes: [ 0, 1 ],
           cachePath: '/some/path',
           outputPath: '/some/path'
