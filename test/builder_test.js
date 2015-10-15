@@ -98,7 +98,7 @@ function FixtureBuilder(/* ... */) {
 FixtureBuilder.prototype.build = function() {
   var self = this
   return Builder.prototype.build.call(this).then(function() {
-    return fixturify.readSync(self.outputPath, { followSymlinks: true })
+    return fixturify.readSync(self.outputPath)
   })
 }
 
