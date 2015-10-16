@@ -621,33 +621,6 @@ describe('Builder', function() {
           )
         })
       })
-
-      it('is cleared before each build', function() {
-        FailOnSecondBuildPlugin.prototype = Object.create(Plugin.prototype)
-        FailOnSecondBuildPlugin.prototype.constructor = FailOnSecondBuildPlugin
-        function FailOnSecondBuildPlugin() {
-          Plugin.call(this, [])
-          this.buildCount = 0
-        }
-        FailOnSecondBuildPlugin.prototype.build = function() {
-          if (++this.buildCount === 2) throw new Error('we interrupt this program')
-        }
-        var node0 = new FailOnSecondBuildPlugin
-        var node1 = new plugins.MergePlugin([node0])
-        builder = new Builder(node1)
-        return builder.build()
-          .then(function() {
-            expect(builder.nodeHandlers[0].buildState).to.be.ok
-            expect(builder.nodeHandlers[1].buildState).to.be.ok
-            return builder.build()
-          })
-          .then(function() {
-            throw new Error('Expected an error')
-          }, function(err) {
-            expect(builder.nodeHandlers[0].buildState).to.be.ok
-            expect(builder.nodeHandlers[1].buildState).to.be.not.ok
-          })
-      })
     })
   })
 })
