@@ -480,24 +480,24 @@ describe('Builder', function() {
     var outputNode = new plugins.SleepingPlugin([node1, node2])
     builder = new Builder(outputNode)
     return builder.build().then(function() {
-      var sourceBn = builder.builderNodes[0]
-      var bn1 = builder.builderNodes[1]
-      var bn2 = builder.builderNodes[2]
-      var outputBn = builder.builderNodes[3]
+      var sourceNh = builder.nodeHandlers[0]
+      var nh1 = builder.nodeHandlers[1]
+      var nh2 = builder.nodeHandlers[2]
+      var outputNh = builder.nodeHandlers[3]
 
-      expect(sourceBn.buildState.buildId).to.equal(1)
-      expect(sourceBn.buildState.selfTime).to.equal(0)
-      expect(sourceBn.buildState.totalTime).to.equal(0)
+      expect(sourceNh.buildState.buildId).to.equal(1)
+      expect(sourceNh.buildState.selfTime).to.equal(0)
+      expect(sourceNh.buildState.totalTime).to.equal(0)
 
-      expect(bn1.buildState.selfTime).to.be.greaterThan(0)
-      expect(bn1.buildState.totalTime).to.equal(bn1.buildState.selfTime)
-      expect(bn2.buildState.selfTime).to.be.greaterThan(0)
-      expect(bn2.buildState.totalTime).to.equal(bn2.buildState.selfTime)
+      expect(nh1.buildState.selfTime).to.be.greaterThan(0)
+      expect(nh1.buildState.totalTime).to.equal(nh1.buildState.selfTime)
+      expect(nh2.buildState.selfTime).to.be.greaterThan(0)
+      expect(nh2.buildState.totalTime).to.equal(nh2.buildState.selfTime)
 
-      expect(outputBn.buildState.selfTime).to.be.greaterThan(0)
-      expect(outputBn.buildState.totalTime).to.equal(
+      expect(outputNh.buildState.selfTime).to.be.greaterThan(0)
+      expect(outputNh.buildState.totalTime).to.equal(
         // addition order matters here, or rounding errors will occur
-        outputBn.buildState.selfTime + bn1.buildState.selfTime + bn2.buildState.selfTime
+        outputNh.buildState.selfTime + nh1.buildState.selfTime + nh2.buildState.selfTime
       )
     })
   })
@@ -509,8 +509,8 @@ describe('Builder', function() {
       events = []
       builder.on('start', function() { events.push('start') })
       builder.on('end', function() { events.push('end') })
-      builder.on('nodeStart', function(bn) { events.push('nodeStart:' + bn.id) })
-      builder.on('nodeEnd', function(bn) { events.push('nodeEnd:' + bn.id) })
+      builder.on('nodeStart', function(nh) { events.push('nodeStart:' + nh.id) })
+      builder.on('nodeEnd', function(nh) { events.push('nodeEnd:' + nh.id) })
     }
 
     it('triggers RSVP events', function() {
@@ -546,33 +546,33 @@ describe('Builder', function() {
     })
   })
 
-  describe('builder nodes', function() {
-    var watchedSourceBn, unwatchedSourceBn, transformBn
+  describe('node handlers', function() {
+    var watchedSourceNh, unwatchedSourceNh, transformNh
 
     beforeEach(function() {
       var watchedSourceNode = new broccoliSource.WatchedDir('test/fixtures/basic')
       var unwatchedSourceNode = new broccoliSource.UnwatchedDir('test/fixtures/basic')
       var transformNode = new plugins.MergePlugin([watchedSourceNode, unwatchedSourceNode], { overwrite: true })
       builder = new Builder(transformNode)
-      watchedSourceBn = builder.builderNodes[0]
-      unwatchedSourceBn = builder.builderNodes[1]
-      transformBn = builder.builderNodes[2]
+      watchedSourceNh = builder.nodeHandlers[0]
+      unwatchedSourceNh = builder.nodeHandlers[1]
+      transformNh = builder.nodeHandlers[2]
     })
 
     it('has .toString value useful for debugging', function() {
-      expect(watchedSourceBn + '').to.equal('[BuilderNode:0 test/fixtures/basic]')
-      expect(unwatchedSourceBn + '').to.equal('[BuilderNode:1 test/fixtures/basic (unwatched)]')
-      expect(transformBn + '').to.match(/\[BuilderNode:2 "MergePlugin" inputBuilderNodes:\[0,1\] at .+\]/)
+      expect(watchedSourceNh + '').to.equal('[NodeHandler:0 test/fixtures/basic]')
+      expect(unwatchedSourceNh + '').to.equal('[NodeHandler:1 test/fixtures/basic (unwatched)]')
+      expect(transformNh + '').to.match(/\[NodeHandler:2 "MergePlugin" inputNodeHandlers:\[0,1\] at .+\]/)
 
       // Reports timing after first build
-      expect(transformBn + '').not.to.match(/\([0-9]+ ms\)/)
+      expect(transformNh + '').not.to.match(/\([0-9]+ ms\)/)
       return builder.build().then(function() {
-        expect(transformBn + '').to.match(/\([0-9]+ ms\)/)
+        expect(transformNh + '').to.match(/\([0-9]+ ms\)/)
       })
     })
 
     it('has .toJSON representation useful for exporting for visualization', function() {
-      expect(watchedSourceBn.toJSON()).to.deep.equal({
+      expect(watchedSourceNh.toJSON()).to.deep.equal({
         id: 0,
         pluginInterface: {
           nodeType: 'source',
@@ -582,29 +582,29 @@ describe('Builder', function() {
           annotation: null
         },
         label: 'WatchedDir',
-        inputBuilderNodes: [],
+        inputNodeHandlers: [],
         cachePath: null,
         outputPath: 'test/fixtures/basic',
         buildState: null
       })
 
-      expect(transformBn.toJSON().buildState).to.be.null
+      expect(transformNh.toJSON().buildState).to.be.null
       return builder.build().then(function() {
-        var transformBnJSON = transformBn.toJSON()
+        var transformNhJSON = transformNh.toJSON()
 
         // Fuzzy matches first
-        expect(transformBnJSON.cachePath).to.be.a('string')
-        expect(transformBnJSON.outputPath).to.be.a('string')
-        transformBnJSON.cachePath = '/some/path'
-        transformBnJSON.outputPath = '/some/path'
-        expect(transformBnJSON.buildState.buildId).to.be.a('number')
-        expect(transformBnJSON.buildState.selfTime).to.be.a('number')
-        expect(transformBnJSON.buildState.totalTime).to.be.a('number')
-        transformBnJSON.buildState.buildId = 1
-        transformBnJSON.buildState.selfTime = 1
-        transformBnJSON.buildState.totalTime = 1
+        expect(transformNhJSON.cachePath).to.be.a('string')
+        expect(transformNhJSON.outputPath).to.be.a('string')
+        transformNhJSON.cachePath = '/some/path'
+        transformNhJSON.outputPath = '/some/path'
+        expect(transformNhJSON.buildState.buildId).to.be.a('number')
+        expect(transformNhJSON.buildState.selfTime).to.be.a('number')
+        expect(transformNhJSON.buildState.totalTime).to.be.a('number')
+        transformNhJSON.buildState.buildId = 1
+        transformNhJSON.buildState.selfTime = 1
+        transformNhJSON.buildState.totalTime = 1
 
-        expect(transformBnJSON).to.deep.equal({
+        expect(transformNhJSON).to.deep.equal({
           id: 2,
           pluginInterface: {
             nodeType: 'transform',
@@ -618,7 +618,7 @@ describe('Builder', function() {
             totalTime: 1
           },
           label: 'MergePlugin',
-          inputBuilderNodes: [ 0, 1 ],
+          inputNodeHandlers: [ 0, 1 ],
           cachePath: '/some/path',
           outputPath: '/some/path'
         })
