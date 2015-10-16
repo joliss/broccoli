@@ -483,8 +483,8 @@ describe('Builder', function() {
       events = []
       builder.on('start', function() { events.push('start') })
       builder.on('end', function() { events.push('end') })
-      builder.on('nodeStart', function(nh) { events.push('nodeStart:' + nh.id) })
-      builder.on('nodeEnd', function(nh) { events.push('nodeEnd:' + nh.id) })
+      builder.on('nodeStart', function(nw) { events.push('nodeStart:' + nw.id) })
+      builder.on('nodeEnd', function(nw) { events.push('nodeEnd:' + nw.id) })
     }
 
     it('triggers RSVP events', function() {
@@ -520,28 +520,28 @@ describe('Builder', function() {
     })
   })
 
-  describe('node handlers', function() {
-    var watchedSourceNh, unwatchedSourceNh, transformNh
+  describe('node wrappers', function() {
+    var watchedSourceNw, unwatchedSourceNw, transformNw
 
     beforeEach(function() {
       var watchedSourceNode = new broccoliSource.WatchedDir('test/fixtures/basic')
       var unwatchedSourceNode = new broccoliSource.UnwatchedDir('test/fixtures/basic')
       var transformNode = new plugins.MergePlugin([watchedSourceNode, unwatchedSourceNode], { overwrite: true })
       builder = new Builder(transformNode)
-      watchedSourceNh = builder.nodeHandlers[0]
-      unwatchedSourceNh = builder.nodeHandlers[1]
-      transformNh = builder.nodeHandlers[2]
+      watchedSourceNw = builder.nodeWrappers[0]
+      unwatchedSourceNw = builder.nodeWrappers[1]
+      transformNw = builder.nodeWrappers[2]
     })
 
     it('has .toString value useful for debugging', function() {
-      expect(watchedSourceNh + '').to.equal('[NodeHandler:0 test/fixtures/basic]')
-      expect(unwatchedSourceNh + '').to.equal('[NodeHandler:1 test/fixtures/basic (unwatched)]')
-      expect(transformNh + '').to.match(/\[NodeHandler:2 MergePlugin inputNodeHandlers:\[0,1\] at .+\]/)
+      expect(watchedSourceNw + '').to.equal('[NodeWrapper:0 test/fixtures/basic]')
+      expect(unwatchedSourceNw + '').to.equal('[NodeWrapper:1 test/fixtures/basic (unwatched)]')
+      expect(transformNw + '').to.match(/\[NodeWrapper:2 MergePlugin inputNodeWrappers:\[0,1\] at .+\]/)
 
       // Reports timing after first build
-      expect(transformNh + '').not.to.match(/\([0-9]+ ms\)/)
+      expect(transformNw + '').not.to.match(/\([0-9]+ ms\)/)
       return builder.build().then(function() {
-        expect(transformNh + '').to.match(/\([0-9]+ ms\)/)
+        expect(transformNw + '').to.match(/\([0-9]+ ms\)/)
       })
     })
 
@@ -551,16 +551,16 @@ describe('Builder', function() {
       var node2 = new plugins.MergePlugin([node0, node1])
       var node3 = new plugins.MergePlugin([node2], { annotation: 'some text' })
       builder = new Builder(node3)
-      expect(builder.nodeHandlers[0].label).to.equal('WatchedDir (test/fixtures/basic)')
-      expect(builder.nodeHandlers[1].label).to.equal('WatchedDir (test/fixtures/basic; some text)')
-      expect(builder.nodeHandlers[2].label).to.equal('MergePlugin')
-      expect(builder.nodeHandlers[3].label).to.equal('MergePlugin (some text)')
+      expect(builder.nodeWrappers[0].label).to.equal('WatchedDir (test/fixtures/basic)')
+      expect(builder.nodeWrappers[1].label).to.equal('WatchedDir (test/fixtures/basic; some text)')
+      expect(builder.nodeWrappers[2].label).to.equal('MergePlugin')
+      expect(builder.nodeWrappers[3].label).to.equal('MergePlugin (some text)')
     })
 
     it('has .toJSON representation useful for exporting for visualization', function() {
-      expect(watchedSourceNh.toJSON()).to.deep.equal({
+      expect(watchedSourceNw.toJSON()).to.deep.equal({
         id: 0,
-        pluginInterface: {
+        nodeInfo: {
           nodeType: 'source',
           sourceDirectory: 'test/fixtures/basic',
           watched: true,
@@ -568,29 +568,29 @@ describe('Builder', function() {
           annotation: null
         },
         label: 'WatchedDir (test/fixtures/basic)',
-        inputNodeHandlers: [],
+        inputNodeWrappers: [],
         cachePath: null,
         outputPath: 'test/fixtures/basic',
         buildState: null
       })
 
-      expect(transformNh.toJSON().buildState).to.be.null
+      expect(transformNw.toJSON().buildState).to.be.null
       return builder.build().then(function() {
-        var transformNhJSON = transformNh.toJSON()
+        var transformNwJSON = transformNw.toJSON()
 
         // Fuzzy matches first
-        expect(transformNhJSON.cachePath).to.be.a('string')
-        expect(transformNhJSON.outputPath).to.be.a('string')
-        transformNhJSON.cachePath = '/some/path'
-        transformNhJSON.outputPath = '/some/path'
-        expect(transformNhJSON.buildState.selfTime).to.be.a('number')
-        expect(transformNhJSON.buildState.totalTime).to.be.a('number')
-        transformNhJSON.buildState.selfTime = 1
-        transformNhJSON.buildState.totalTime = 1
+        expect(transformNwJSON.cachePath).to.be.a('string')
+        expect(transformNwJSON.outputPath).to.be.a('string')
+        transformNwJSON.cachePath = '/some/path'
+        transformNwJSON.outputPath = '/some/path'
+        expect(transformNwJSON.buildState.selfTime).to.be.a('number')
+        expect(transformNwJSON.buildState.totalTime).to.be.a('number')
+        transformNwJSON.buildState.selfTime = 1
+        transformNwJSON.buildState.totalTime = 1
 
-        expect(transformNhJSON).to.deep.equal({
+        expect(transformNwJSON).to.deep.equal({
           id: 2,
-          pluginInterface: {
+          nodeInfo: {
             nodeType: 'transform',
             name: 'MergePlugin',
             annotation: null,
@@ -601,7 +601,7 @@ describe('Builder', function() {
             totalTime: 1
           },
           label: 'MergePlugin',
-          inputNodeHandlers: [ 0, 1 ],
+          inputNodeWrappers: [ 0, 1 ],
           cachePath: '/some/path',
           outputPath: '/some/path'
         })
@@ -615,23 +615,23 @@ describe('Builder', function() {
         var outputNode = new plugins.SleepingPlugin([node1, node2])
         builder = new Builder(outputNode)
         return builder.build().then(function() {
-          var sourceNh = builder.nodeHandlers[0]
-          var nh1 = builder.nodeHandlers[1]
-          var nh2 = builder.nodeHandlers[2]
-          var outputNh = builder.nodeHandlers[3]
+          var sourceNw = builder.nodeWrappers[0]
+          var nw1 = builder.nodeWrappers[1]
+          var nw2 = builder.nodeWrappers[2]
+          var outputNw = builder.nodeWrappers[3]
 
-          expect(sourceNh.buildState.selfTime).to.equal(0)
-          expect(sourceNh.buildState.totalTime).to.equal(0)
+          expect(sourceNw.buildState.selfTime).to.equal(0)
+          expect(sourceNw.buildState.totalTime).to.equal(0)
 
-          expect(nh1.buildState.selfTime).to.be.greaterThan(0)
-          expect(nh1.buildState.totalTime).to.equal(nh1.buildState.selfTime)
-          expect(nh2.buildState.selfTime).to.be.greaterThan(0)
-          expect(nh2.buildState.totalTime).to.equal(nh2.buildState.selfTime)
+          expect(nw1.buildState.selfTime).to.be.greaterThan(0)
+          expect(nw1.buildState.totalTime).to.equal(nw1.buildState.selfTime)
+          expect(nw2.buildState.selfTime).to.be.greaterThan(0)
+          expect(nw2.buildState.totalTime).to.equal(nw2.buildState.selfTime)
 
-          expect(outputNh.buildState.selfTime).to.be.greaterThan(0)
-          expect(outputNh.buildState.totalTime).to.equal(
+          expect(outputNw.buildState.selfTime).to.be.greaterThan(0)
+          expect(outputNw.buildState.totalTime).to.equal(
             // addition order matters here, or rounding errors will occur
-            outputNh.buildState.selfTime + nh1.buildState.selfTime + nh2.buildState.selfTime
+            outputNw.buildState.selfTime + nw1.buildState.selfTime + nw2.buildState.selfTime
           )
         })
       })
