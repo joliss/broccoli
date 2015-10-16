@@ -281,7 +281,12 @@ describe('Builder', function() {
       expect(builder.watchedPaths).to.deep.equal(['test/fixtures/basic'])
     })
 
-    it('fails when a source directory doesn\'t exist')
+    // it('fails when a source directory doesn\'t exist', function() {
+    //   builder = new Builder(new broccoliSource.UnwatchedDir('test/fixtures/doesnotexist'))
+    //   return expect(builder.build()).to.be.eventually.rejectedWith(Error, /asd/)
+    // })
+
+    it('fails when a source directory is a while')
   })
 
   describe('error handling in constructor', function() {
