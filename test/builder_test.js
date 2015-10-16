@@ -310,14 +310,14 @@ describe('Builder', function() {
       it('catches invalid input nodes', function() {
         expect(function() {
           new Builder(new plugins.MergePlugin([invalidNode], { annotation: 'some annotation' }))
-        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got \[object Object\]\nused as input node to "MergePlugin: some annotation"\n-~- created here: -~-/)
+        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got \[object Object\]\nused as input node to MergePlugin \(some annotation\)\n-~- created here: -~-/)
       })
 
       it('catches undefined input nodes', function() {
         // Very common subcase of invalid input nodes
         expect(function() {
           new Builder(new plugins.MergePlugin([undefined], { annotation: 'some annotation' }))
-        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got undefined\nused as input node to "MergePlugin: some annotation"\n-~- created here: -~-/)
+        }).to.throw(Builder.InvalidNodeError, /Expected Broccoli node, got undefined\nused as input node to MergePlugin \(some annotation\)\n-~- created here: -~-/)
       })
 
       it('catches .read/.rebuild-based root nodes', function() {
@@ -329,7 +329,7 @@ describe('Builder', function() {
       it('catches .read/.rebuild-based input nodes', function() {
         expect(function() {
           new Builder(new plugins.MergePlugin([readBasedNode], { annotation: 'some annotation' }))
-        }).to.throw(Builder.InvalidNodeError, /\.read\/\.rebuild API[^\n]*"an old node"\nused as input node to "MergePlugin: some annotation"\n-~- created here: -~-/)
+        }).to.throw(Builder.InvalidNodeError, /\.read\/\.rebuild API[^\n]*"an old node"\nused as input node to MergePlugin \(some annotation\)\n-~- created here: -~-/)
       })
     })
   })
@@ -391,7 +391,7 @@ describe('Builder', function() {
         var node = new FailingSetupPlugin(new Error('foo error'))
         expect(function() {
           new Builder(node, { tmpdir: 'test/tmp' })
-        }).to.throw(Builder.NodeSetupError, /foo error\nat "FailingSetupPlugin"\n-~- created here: -~-/)
+        }).to.throw(Builder.NodeSetupError, /foo error\nat FailingSetupPlugin\n-~- created here: -~-/)
         expect(hasBroccoliTmpDir('test/tmp')).to.be.false
       })
 
@@ -399,7 +399,7 @@ describe('Builder', function() {
         var node = new FailingSetupPlugin('bar error')
         expect(function() {
           new Builder(node, { tmpdir: 'test/tmp' })
-        }).to.throw(Builder.NodeSetupError, /bar error\nat "FailingSetupPlugin"\n-~- created here: -~-/)
+        }).to.throw(Builder.NodeSetupError, /bar error\nat FailingSetupPlugin\n-~- created here: -~-/)
         expect(hasBroccoliTmpDir('test/tmp')).to.be.false
       })
     })
@@ -432,7 +432,7 @@ describe('Builder', function() {
               expect(err).to.be.an.instanceof(Builder.BuildError)
               expect(err.stack).to.equal(originalError.stack, 'preserves original stack')
 
-              expect(err.message).to.match(/somefile.js:42:4: whoops\nin \/some\/dir\nat "FailingBuildPlugin: annotated"/)
+              expect(err.message).to.match(/somefile.js:42:4: whoops\nin \/some\/dir\nat FailingBuildPlugin \(annotated\)/)
               expect(err.message).not.to.match(/created here/, 'suppresses instantiation stack when .file is supplied')
 
               expect(err.broccoliPayload.originalError).to.equal(originalError)
@@ -457,7 +457,7 @@ describe('Builder', function() {
 
           builder = new Builder(new plugins.FailingBuildPlugin(originalError))
           return expect(builder.build()).to.be.rejectedWith(Builder.BuildError,
-            /whoops\nat "FailingBuildPlugin"\n-~- created here: -~-/)
+            /whoops\nat FailingBuildPlugin\n-~- created here: -~-/)
         })
 
         it('handles string errors', function() {
@@ -534,13 +534,25 @@ describe('Builder', function() {
     it('has .toString value useful for debugging', function() {
       expect(watchedSourceNh + '').to.equal('[NodeHandler:0 test/fixtures/basic]')
       expect(unwatchedSourceNh + '').to.equal('[NodeHandler:1 test/fixtures/basic (unwatched)]')
-      expect(transformNh + '').to.match(/\[NodeHandler:2 "MergePlugin" inputNodeHandlers:\[0,1\] at .+\]/)
+      expect(transformNh + '').to.match(/\[NodeHandler:2 MergePlugin inputNodeHandlers:\[0,1\] at .+\]/)
 
       // Reports timing after first build
       expect(transformNh + '').not.to.match(/\([0-9]+ ms\)/)
       return builder.build().then(function() {
         expect(transformNh + '').to.match(/\([0-9]+ ms\)/)
       })
+    })
+
+    it('has .label property', function() {
+      var node0 = new broccoliSource.WatchedDir('test/fixtures/basic')
+      var node1 = new broccoliSource.WatchedDir('test/fixtures/basic', { annotation: 'some text' })
+      var node2 = new plugins.MergePlugin([node0, node1])
+      var node3 = new plugins.MergePlugin([node2], { annotation: 'some text' })
+      builder = new Builder(node3)
+      expect(builder.nodeHandlers[0].label).to.equal('WatchedDir (test/fixtures/basic)')
+      expect(builder.nodeHandlers[1].label).to.equal('WatchedDir (test/fixtures/basic; some text)')
+      expect(builder.nodeHandlers[2].label).to.equal('MergePlugin')
+      expect(builder.nodeHandlers[3].label).to.equal('MergePlugin (some text)')
     })
 
     it('has .toJSON representation useful for exporting for visualization', function() {
@@ -553,7 +565,7 @@ describe('Builder', function() {
           name: 'WatchedDir',
           annotation: null
         },
-        label: 'WatchedDir',
+        label: 'WatchedDir (test/fixtures/basic)',
         inputNodeHandlers: [],
         cachePath: null,
         outputPath: 'test/fixtures/basic',
