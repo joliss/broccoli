@@ -280,6 +280,8 @@ describe('Builder', function() {
       builder = new FixtureBuilder(new plugins.MergePlugin([src, src]))
       expect(builder.watchedPaths).to.deep.equal(['test/fixtures/basic'])
     })
+
+    it('fails when a source directory doesn\'t exist')
   })
 
   describe('error handling in constructor', function() {
