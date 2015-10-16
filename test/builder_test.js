@@ -1,5 +1,6 @@
 var fs = require('fs')
 var os = require('os')
+var path = require('path')
 var rimraf = require('rimraf')
 var RSVP = require('rsvp')
 var broccoli = require('..')
@@ -14,10 +15,6 @@ var multidepPackages = require('multidep')('test/multidep.json')
 
 var Plugin = multidepPackages['broccoli-plugin']['1.2.0']()
 var broccoliSource = multidepPackages['broccoli-source']['1.1.0']()
-
-
-// TODO:
-// test persistent output
 
 
 
@@ -142,7 +139,7 @@ describe('Builder', function() {
     }
   })
 
-  describe('"transform" nodes (.build)', function() {
+  describe('broccoli-plugin nodes (nodeType: "transform")', function() {
     multidepPackages['broccoli-plugin'].forEachVersion(function(version, Plugin) {
       var plugins = makePlugins(Plugin)
 
@@ -192,29 +189,64 @@ describe('Builder', function() {
           // inputPath and outputPath are tested implicitly by the other tests,
           // but cachePath isn't, so we have this test case
 
-          var cachePath
-
-          TestPlugin.prototype = Object.create(Plugin.prototype)
-          TestPlugin.prototype.constructor = TestPlugin
-          function TestPlugin() {
+          CacheTestPlugin.prototype = Object.create(Plugin.prototype)
+          CacheTestPlugin.prototype.constructor = CacheTestPlugin
+          function CacheTestPlugin() {
             Plugin.call(this, [])
           }
-          TestPlugin.prototype.build = function() {
-            cachePath = this.cachePath
+          CacheTestPlugin.prototype.build = function() {
+            expect(fs.existsSync(this.cachePath)).to.be.true
           }
 
-          builder = new Builder(new TestPlugin)
+          builder = new Builder(new CacheTestPlugin)
+          return builder.build()
+        })
+      })
+    })
+
+    describe('persistentOutput flag', function() {
+      multidepPackages['broccoli-plugin'].forEachVersion(function(version, Plugin) {
+        if (version === '1.0.0') return // continue
+
+        BuildOncePlugin.prototype = Object.create(Plugin.prototype)
+        BuildOncePlugin.prototype.constructor = BuildOncePlugin
+        function BuildOncePlugin(options) {
+          Plugin.call(this, [], options)
+        }
+
+        BuildOncePlugin.prototype.build = function() {
+          if (!this.builtOnce) {
+            this.builtOnce = true
+            fs.writeFileSync(path.join(this.outputPath, 'foo.txt'), 'test')
+          }
+        }
+
+        function isPersistent(options) {
+          var builder = new FixtureBuilder(new BuildOncePlugin(options))
           return builder.build()
             .then(function() {
-              expect(cachePath).to.be.ok
-              expect(fs.existsSync(cachePath)).to.be.true
+              return builder.build()
+            }).then(function(obj) {
+              return obj['foo.txt'] === 'test'
+            }).finally(function() {
+              return builder.cleanup()
             })
+        }
+
+        describe('broccoli-plugin ' + version, function() {
+          it('is not persistent by default', function() {
+            return expect(isPersistent({})).to.be.eventually.false
+          })
+
+          it('is persistent with persistentOutput: true', function() {
+            return expect(isPersistent({ persistentOutput: true })).to.be.eventually.true
+          })
         })
       })
     })
   })
 
-  describe('"source" nodes and strings', function() {
+  describe('broccoli-source nodes (nodeType: "source") and strings', function() {
     multidepPackages['broccoli-source'].forEachVersion(function(version, broccoliSource) {
       describe('broccoli-source ' + version, function() {
         it('records unwatched source directories', function() {
@@ -250,7 +282,7 @@ describe('Builder', function() {
     })
   })
 
-  describe('error handling', function() {
+  describe('error handling in constructor', function() {
     it('detects cycles', function() {
       // Cycles are quite hard to construct, so we make a special plugin
       CyclicalPlugin.prototype = Object.create(Plugin.prototype)
