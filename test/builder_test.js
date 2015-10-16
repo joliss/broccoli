@@ -281,12 +281,17 @@ describe('Builder', function() {
       expect(builder.watchedPaths).to.deep.equal(['test/fixtures/basic'])
     })
 
-    // it('fails when a source directory doesn\'t exist', function() {
-    //   builder = new Builder(new broccoliSource.UnwatchedDir('test/fixtures/doesnotexist'))
-    //   return expect(builder.build()).to.be.eventually.rejectedWith(Error, /asd/)
-    // })
+    it('fails when a source directory doesn\'t exist', function() {
+      builder = new Builder(new broccoliSource.UnwatchedDir('test/fixtures/doesnotexist'))
+      return expect(builder.build()).to.be.eventually.rejectedWith(Builder.BuildError,
+        'test/fixtures/doesnotexist: ENOENT: no such file or directory\nat UnwatchedDir (test/fixtures/doesnotexist)')
+    })
 
-    it('fails when a source directory is a while')
+    it('fails when a source directory is a file', function() {
+      builder = new Builder(new broccoliSource.UnwatchedDir('test/fixtures/basic/foo.txt'))
+      return expect(builder.build()).to.be.eventually.rejectedWith(Builder.BuildError,
+        'test/fixtures/basic/foo.txt: Not a directory\nat UnwatchedDir (test/fixtures/basic/foo.txt)')
+    })
   })
 
   describe('error handling in constructor', function() {

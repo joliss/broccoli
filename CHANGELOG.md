@@ -1,5 +1,9 @@
 # master
 
+* Drop support for plugins using the old `.read/.rebuild` API
+* Fail build when a source node is a file rather than a directory
+* Fail build when a source node doesn't exist
+
 # 0.16.8
 
 * Add builder hooks
