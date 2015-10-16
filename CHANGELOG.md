@@ -3,6 +3,20 @@
 * Drop support for plugins using the old `.read/.rebuild` API
 * Fail build when a source node is a file rather than a directory
 * Fail build when a source node doesn't exist
+* Builder API changes:
+
+    - `new Builder` has a `tmpdir` option, which defaults to `os.tmpdir()`
+      (typically `/tmp`); pass `{ tmpdir: './tmp' }` to get the old behavior
+    - `.build()` no longer returns a promise to the output path; instead, the
+      output path stored at `builder.outputPath` and doesn't change between
+      builds
+    - `nodeStart` event renamed to `nodeBegin`
+    - Nodes passed to `nodeBegin`/`nodeEnd` arguments are "node wrapper"
+      objects (also accessible at `builder.nodeWrappers`); timings now
+      reside at `nodeWrapper.buildState.selfTime/totalTime` and are in
+      milliseconds, not nanoseconds
+    - `build()` no longer takes a `willReadStringTree` callback argument;
+      instead, source directories are recorded at `builder.watchedPaths`
 
 # 0.16.8
 

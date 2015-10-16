@@ -493,7 +493,7 @@ describe('Builder', function() {
       events = []
       builder.on('start', function() { events.push('start') })
       builder.on('end', function() { events.push('end') })
-      builder.on('nodeStart', function(nw) { events.push('nodeStart:' + nw.id) })
+      builder.on('nodeBegin', function(nw) { events.push('nodeBegin:' + nw.id) })
       builder.on('nodeEnd', function(nw) { events.push('nodeEnd:' + nw.id) })
     }
 
@@ -504,11 +504,11 @@ describe('Builder', function() {
         .then(function() {
           expect(events).to.deep.equal([
             'start',
-            'nodeStart:0',
+            'nodeBegin:0',
             'nodeEnd:0',
-            'nodeStart:1',
+            'nodeBegin:1',
             'nodeEnd:1',
-            'nodeStart:2',
+            'nodeBegin:2',
             'nodeEnd:2',
             'end'
           ])
@@ -522,7 +522,7 @@ describe('Builder', function() {
         .then(function() {
           expect(events).to.deep.equal([
             'start',
-            'nodeStart:0',
+            'nodeBegin:0',
             'nodeEnd:0',
             'end'
           ])
