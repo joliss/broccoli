@@ -474,34 +474,6 @@ describe('Builder', function() {
     })
   })
 
-  it('reports node timings', function() {
-    var node1 = new plugins.SleepingPlugin(['test/fixtures/basic'])
-    var node2 = new plugins.SleepingPlugin
-    var outputNode = new plugins.SleepingPlugin([node1, node2])
-    builder = new Builder(outputNode)
-    return builder.build().then(function() {
-      var sourceNh = builder.nodeHandlers[0]
-      var nh1 = builder.nodeHandlers[1]
-      var nh2 = builder.nodeHandlers[2]
-      var outputNh = builder.nodeHandlers[3]
-
-      expect(sourceNh.buildState.buildId).to.equal(1)
-      expect(sourceNh.buildState.selfTime).to.equal(0)
-      expect(sourceNh.buildState.totalTime).to.equal(0)
-
-      expect(nh1.buildState.selfTime).to.be.greaterThan(0)
-      expect(nh1.buildState.totalTime).to.equal(nh1.buildState.selfTime)
-      expect(nh2.buildState.selfTime).to.be.greaterThan(0)
-      expect(nh2.buildState.totalTime).to.equal(nh2.buildState.selfTime)
-
-      expect(outputNh.buildState.selfTime).to.be.greaterThan(0)
-      expect(outputNh.buildState.totalTime).to.equal(
-        // addition order matters here, or rounding errors will occur
-        outputNh.buildState.selfTime + nh1.buildState.selfTime + nh2.buildState.selfTime
-      )
-    })
-  })
-
   describe('event handling', function() {
     var events
 
@@ -597,10 +569,8 @@ describe('Builder', function() {
         expect(transformNhJSON.outputPath).to.be.a('string')
         transformNhJSON.cachePath = '/some/path'
         transformNhJSON.outputPath = '/some/path'
-        expect(transformNhJSON.buildState.buildId).to.be.a('number')
         expect(transformNhJSON.buildState.selfTime).to.be.a('number')
         expect(transformNhJSON.buildState.totalTime).to.be.a('number')
-        transformNhJSON.buildState.buildId = 1
         transformNhJSON.buildState.selfTime = 1
         transformNhJSON.buildState.totalTime = 1
 
@@ -613,7 +583,6 @@ describe('Builder', function() {
             persistentOutput: false
           },
           buildState: {
-            buildId: 1,
             selfTime: 1,
             totalTime: 1
           },
@@ -622,6 +591,62 @@ describe('Builder', function() {
           cachePath: '/some/path',
           outputPath: '/some/path'
         })
+      })
+    })
+
+    describe('buildState', function() {
+      it('reports node timings', function() {
+        var node1 = new plugins.SleepingPlugin(['test/fixtures/basic'])
+        var node2 = new plugins.SleepingPlugin
+        var outputNode = new plugins.SleepingPlugin([node1, node2])
+        builder = new Builder(outputNode)
+        return builder.build().then(function() {
+          var sourceNh = builder.nodeHandlers[0]
+          var nh1 = builder.nodeHandlers[1]
+          var nh2 = builder.nodeHandlers[2]
+          var outputNh = builder.nodeHandlers[3]
+
+          expect(sourceNh.buildState.selfTime).to.equal(0)
+          expect(sourceNh.buildState.totalTime).to.equal(0)
+
+          expect(nh1.buildState.selfTime).to.be.greaterThan(0)
+          expect(nh1.buildState.totalTime).to.equal(nh1.buildState.selfTime)
+          expect(nh2.buildState.selfTime).to.be.greaterThan(0)
+          expect(nh2.buildState.totalTime).to.equal(nh2.buildState.selfTime)
+
+          expect(outputNh.buildState.selfTime).to.be.greaterThan(0)
+          expect(outputNh.buildState.totalTime).to.equal(
+            // addition order matters here, or rounding errors will occur
+            outputNh.buildState.selfTime + nh1.buildState.selfTime + nh2.buildState.selfTime
+          )
+        })
+      })
+
+      it('is cleared before each build', function() {
+        FailOnSecondBuildPlugin.prototype = Object.create(Plugin.prototype)
+        FailOnSecondBuildPlugin.prototype.constructor = FailOnSecondBuildPlugin
+        function FailOnSecondBuildPlugin() {
+          Plugin.call(this, [])
+          this.buildCount = 0
+        }
+        FailOnSecondBuildPlugin.prototype.build = function() {
+          if (++this.buildCount === 2) throw new Error('we interrupt this program')
+        }
+        var node0 = new FailOnSecondBuildPlugin
+        var node1 = new plugins.MergePlugin([node0])
+        builder = new Builder(node1)
+        return builder.build()
+          .then(function() {
+            expect(builder.nodeHandlers[0].buildState).to.be.ok
+            expect(builder.nodeHandlers[1].buildState).to.be.ok
+            return builder.build()
+          })
+          .then(function() {
+            throw new Error('Expected an error')
+          }, function(err) {
+            expect(builder.nodeHandlers[0].buildState).to.be.ok
+            expect(builder.nodeHandlers[1].buildState).to.be.not.ok
+          })
       })
     })
   })
