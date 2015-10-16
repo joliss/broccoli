@@ -391,7 +391,7 @@ describe('Builder', function() {
         var node = new FailingSetupPlugin(new Error('foo error'))
         expect(function() {
           new Builder(node, { tmpdir: 'test/tmp' })
-        }).to.throw(Builder.NodeSetupError, /foo error\nthrown from "FailingSetupPlugin"\n-~- instantiated here: -~-/)
+        }).to.throw(Builder.NodeSetupError, /foo error\nat "FailingSetupPlugin"\n-~- instantiated here: -~-/)
         expect(hasBroccoliTmpDir('test/tmp')).to.be.false
       })
 
@@ -399,7 +399,7 @@ describe('Builder', function() {
         var node = new FailingSetupPlugin('bar error')
         expect(function() {
           new Builder(node, { tmpdir: 'test/tmp' })
-        }).to.throw(Builder.NodeSetupError, /bar error\nthrown from "FailingSetupPlugin"\n-~- instantiated here: -~-/)
+        }).to.throw(Builder.NodeSetupError, /bar error\nat "FailingSetupPlugin"\n-~- instantiated here: -~-/)
         expect(hasBroccoliTmpDir('test/tmp')).to.be.false
       })
     })
@@ -432,7 +432,7 @@ describe('Builder', function() {
               expect(err).to.be.an.instanceof(Builder.BuildError)
               expect(err.stack).to.equal(originalError.stack, 'preserves original stack')
 
-              expect(err.message).to.match(/somefile.js:42:4: whoops\nin \/some\/dir\nthrown from "FailingBuildPlugin: annotated"/)
+              expect(err.message).to.match(/somefile.js:42:4: whoops\nin \/some\/dir\nat "FailingBuildPlugin: annotated"/)
               expect(err.message).not.to.match(/instantiated here/, 'suppresses instantiation stack when .file is supplied')
 
               expect(err.broccoliPayload.originalError).to.equal(originalError)
@@ -457,7 +457,7 @@ describe('Builder', function() {
 
           builder = new Builder(new plugins.FailingBuildPlugin(originalError))
           return expect(builder.build()).to.be.rejectedWith(Builder.BuildError,
-            /whoops\nthrown from "FailingBuildPlugin"\n-~- instantiated here: -~-/)
+            /whoops\nat "FailingBuildPlugin"\n-~- instantiated here: -~-/)
         })
 
         it('handles string errors', function() {
