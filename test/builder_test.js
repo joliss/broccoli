@@ -210,13 +210,13 @@ describe('Builder', function() {
     it('fails when a source directory doesn\'t exist', function() {
       builder = new Builder(new broccoliSource.UnwatchedDir('test/fixtures/doesnotexist'))
       return expect(builder.build()).to.be.eventually.rejectedWith(Builder.BuildError,
-        'test/fixtures/doesnotexist: ENOENT: no such file or directory\nat UnwatchedDir (test/fixtures/doesnotexist)')
+        /test\/fixtures\/doesnotexist: ENOENT: no such file or directory/)
     })
 
     it('fails when a source directory is a file', function() {
       builder = new Builder(new broccoliSource.UnwatchedDir('test/fixtures/basic/foo.txt'))
       return expect(builder.build()).to.be.eventually.rejectedWith(Builder.BuildError,
-        'test/fixtures/basic/foo.txt: Not a directory\nat UnwatchedDir (test/fixtures/basic/foo.txt)')
+        /test\/fixtures\/basic\/foo\.txt: Not a directory/)
     })
   })
 
@@ -329,7 +329,7 @@ describe('Builder', function() {
         var node = new FailingSetupPlugin(new Error('foo error'))
         expect(function() {
           new Builder(node, { tmpdir: 'test/tmp' })
-        }).to.throw(Builder.NodeSetupError, /foo error\nat FailingSetupPlugin\n-~- created here: -~-/)
+        }).to.throw(Builder.NodeSetupError, /foo error\s+at FailingSetupPlugin\n-~- created here: -~-/)
         expect(hasBroccoliTmpDir('test/tmp')).to.be.false
       })
 
@@ -337,7 +337,7 @@ describe('Builder', function() {
         var node = new FailingSetupPlugin('bar error')
         expect(function() {
           new Builder(node, { tmpdir: 'test/tmp' })
-        }).to.throw(Builder.NodeSetupError, /bar error\nat FailingSetupPlugin\n-~- created here: -~-/)
+        }).to.throw(Builder.NodeSetupError, /bar error\s+at FailingSetupPlugin\n-~- created here: -~-/)
         expect(hasBroccoliTmpDir('test/tmp')).to.be.false
       })
     })
@@ -370,22 +370,25 @@ describe('Builder', function() {
               expect(err).to.be.an.instanceof(Builder.BuildError)
               expect(err.stack).to.equal(originalError.stack, 'preserves original stack')
 
-              expect(err.message).to.match(/somefile.js:42:4: whoops\nin \/some\/dir\nat FailingPlugin \(annotated\)/)
+              expect(err.message).to.match(/somefile.js:42:4: whoops\s+in \/some\/dir\s+at FailingPlugin \(annotated\)/)
               expect(err.message).not.to.match(/created here/, 'suppresses instantiation stack when .file is supplied')
 
               expect(err.broccoliPayload.originalError).to.equal(originalError)
 
               // Reports offending node
               expect(err.broccoliPayload.nodeId).to.equal(0)
+              expect(err.broccoliPayload.nodeLabel).to.equal('FailingPlugin (annotated)')
               expect(err.broccoliPayload.nodeName).to.equal('FailingPlugin')
               expect(err.broccoliPayload.nodeAnnotation).to.equal('annotated')
               expect(err.broccoliPayload.instantiationStack).to.be.a('string')
 
               // Passes on special properties
-              expect(err.broccoliPayload.file).to.equal('somefile.js')
-              expect(err.broccoliPayload.treeDir).to.equal('/some/dir')
-              expect(err.broccoliPayload.line).to.equal(42)
-              expect(err.broccoliPayload.column).to.equal(3)
+              expect(err.broccoliPayload.location).to.deep.equal({
+                file: 'somefile.js',
+                treeDir: '/some/dir',
+                line: 42,
+                column: 3
+              })
               expect(err.broccoliPayload).not.to.have.property('randomProperty')
             })
         })
@@ -395,7 +398,7 @@ describe('Builder', function() {
 
           builder = new Builder(new plugins.FailingPlugin(originalError))
           return expect(builder.build()).to.be.rejectedWith(Builder.BuildError,
-            /whoops\nat FailingPlugin\n-~- created here: -~-/)
+            /whoops\s+at FailingPlugin\n-~- created here: -~-/)
         })
 
         it('handles string errors', function() {
@@ -417,10 +420,10 @@ describe('Builder', function() {
 
     function setupEventHandlers() {
       events = []
-      builder.on('start', function() { events.push('start') })
-      builder.on('end', function() { events.push('end') })
-      builder.on('nodeBegin', function(nw) { events.push('nodeBegin:' + nw.id) })
-      builder.on('nodeEnd', function(nw) { events.push('nodeEnd:' + nw.id) })
+      builder.on('beginBuild', function() { events.push('beginBuild') })
+      builder.on('endBuild', function() { events.push('endBuild') })
+      builder.on('beginNode', function(nw) { events.push('beginNode:' + nw.id) })
+      builder.on('endNode', function(nw) { events.push('endNode:' + nw.id) })
     }
 
     it('triggers RSVP events', function() {
@@ -429,28 +432,28 @@ describe('Builder', function() {
       return builder.build()
         .then(function() {
           expect(events).to.deep.equal([
-            'start',
-            'nodeBegin:0',
-            'nodeEnd:0',
-            'nodeBegin:1',
-            'nodeEnd:1',
-            'nodeBegin:2',
-            'nodeEnd:2',
-            'end'
+            'beginBuild',
+            'beginNode:0',
+            'endNode:0',
+            'beginNode:1',
+            'endNode:1',
+            'beginNode:2',
+            'endNode:2',
+            'endBuild'
           ])
         })
     })
 
-    it('triggers matching nodeEnd event when a node fails to build', function() {
+    it('triggers matching endNode event when a node fails to build', function() {
       builder = new Builder(new plugins.MergePlugin([new plugins.FailingPlugin(new Error('whoops'))]))
       setupEventHandlers()
       return expect(builder.build()).to.be.rejected
         .then(function() {
           expect(events).to.deep.equal([
-            'start',
-            'nodeBegin:0',
-            'nodeEnd:0',
-            'end'
+            'beginBuild',
+            'beginNode:0',
+            'endNode:0',
+            'endBuild'
           ])
         })
     })

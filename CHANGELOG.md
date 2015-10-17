@@ -10,7 +10,8 @@
     - `.build()` no longer returns a promise to the output path; instead, the
       output path stored at `builder.outputPath` and doesn't change between
       builds
-    - `nodeStart` event renamed to `nodeBegin`
+    - `start`, `end`, `nodeStart`, `nodeEnd` events renamed to
+      `beginBuild`, `endBuild`, `beginNode`, `endNode`
     - Nodes passed to `nodeBegin`/`nodeEnd` arguments are "node wrapper"
       objects (also accessible at `builder.nodeWrappers`); timings now
       reside at `nodeWrapper.buildState.selfTime/totalTime` and are in
