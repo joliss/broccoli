@@ -6,8 +6,8 @@ var path = require('path')
 var rimraf = require('rimraf')
 var RSVP = require('rsvp')
 var broccoli = require('..')
+var makePlugins = require('./plugins')
 var Builder = broccoli.Builder
-var symlinkOrCopySync = require('symlink-or-copy').sync
 var fixturify = require('fixturify')
 var sinon = require('sinon')
 var chai = require('chai'), expect = chai.expect
@@ -23,81 +23,6 @@ var broccoliSource = multidepPackages['broccoli-source']['1.1.0']()
 RSVP.on('error', function(error) {
   throw error
 })
-
-// Create various test plugins subclassing from Plugin. Used for testing
-// against different Plugin versions.
-function makePlugins(Plugin) {
-  var plugins = {}
-
-  // This plugin writes foo.js into its outputPath
-  plugins.VeggiesPlugin = VeggiesPlugin
-  VeggiesPlugin.prototype = Object.create(Plugin.prototype)
-  VeggiesPlugin.prototype.constructor = VeggiesPlugin
-  function VeggiesPlugin(inputNodes, options) {
-    Plugin.call(this, [], options)
-  }
-  VeggiesPlugin.prototype.build = function() {
-    fs.writeFileSync(this.outputPath + '/veggies.txt', 'tasty')
-  }
-
-  plugins.MergePlugin = MergePlugin
-  MergePlugin.prototype = Object.create(Plugin.prototype)
-  MergePlugin.prototype.constructor = MergePlugin
-  function MergePlugin(inputNodes, options) {
-    Plugin.call(this, inputNodes, options)
-  }
-  MergePlugin.prototype.build = function() {
-    for (var i = 0; i < this.inputPaths.length; i++) {
-      symlinkOrCopySync(this.inputPaths[i], this.outputPath + '/' + i)
-    }
-  }
-
-  plugins.FailingBuildPlugin = FailingBuildPlugin
-  FailingBuildPlugin.prototype = Object.create(Plugin.prototype)
-  FailingBuildPlugin.prototype.constructor = FailingBuildPlugin
-  function FailingBuildPlugin(errorObject, options) {
-    Plugin.call(this, [], options)
-    this.errorObject = errorObject
-  }
-  FailingBuildPlugin.prototype.build = function() {
-    throw this.errorObject
-  }
-
-  // Plugin for testing asynchrony. buildFinished is a deferred (RSVP.defer()).
-  // The build will stall until you call node.finishBuild().
-  // To wait until the build starts, chain on node.buildStarted.
-  // Don't build more than once.
-  plugins.AsyncPlugin = AsyncPlugin
-  AsyncPlugin.prototype = Object.create(Plugin.prototype)
-  AsyncPlugin.prototype.constructor = AsyncPlugin
-  function AsyncPlugin(inputNodes, options) {
-    Plugin.call(this, inputNodes || [], options)
-    this.buildFinishedDeferred = RSVP.defer()
-    this.buildStartedDeferred = RSVP.defer()
-    this.buildStarted = this.buildStartedDeferred.promise
-  }
-  AsyncPlugin.prototype.build = function() {
-    this.buildStartedDeferred.resolve()
-    return this.buildFinishedDeferred.promise
-  }
-  AsyncPlugin.prototype.finishBuild = function() {
-    this.buildFinishedDeferred.resolve()
-  }
-
-  plugins.SleepingPlugin = SleepingPlugin
-  SleepingPlugin.prototype = Object.create(Plugin.prototype)
-  SleepingPlugin.prototype.constructor = SleepingPlugin
-  function SleepingPlugin(inputNodes) {
-    Plugin.call(this, inputNodes || [])
-  }
-  SleepingPlugin.prototype.build = function() {
-    return new RSVP.Promise(function(resolve, reject) {
-      setTimeout(resolve, 10)
-    })
-  }
-
-  return plugins
-}
 
 // Make a default set of plugins with the latest Plugin version. In some tests
 // we'll shadow this `plugins` variable with one created with different versions.
@@ -135,9 +60,8 @@ describe('Builder', function() {
 
   afterEach(function() {
     if (builder) {
-      return RSVP.resolve(builder.cleanup()).then(function() {
-        builder = null
-      })
+      builder.cleanup()
+      builder = null
     }
   })
 
@@ -432,7 +356,7 @@ describe('Builder', function() {
           originalError.column = 3
           originalError.randomProperty = 'is ignored'
 
-          var node = new plugins.FailingBuildPlugin(originalError, { annotation: 'annotated' })
+          var node = new plugins.FailingPlugin(originalError, { annotation: 'annotated' })
           // Wrapping in MergePlugin shouldn't make a difference. This way we
           // test that we don't have multiple catch clauses applying, wrapping
           // the error repeatedly
@@ -446,14 +370,14 @@ describe('Builder', function() {
               expect(err).to.be.an.instanceof(Builder.BuildError)
               expect(err.stack).to.equal(originalError.stack, 'preserves original stack')
 
-              expect(err.message).to.match(/somefile.js:42:4: whoops\nin \/some\/dir\nat FailingBuildPlugin \(annotated\)/)
+              expect(err.message).to.match(/somefile.js:42:4: whoops\nin \/some\/dir\nat FailingPlugin \(annotated\)/)
               expect(err.message).not.to.match(/created here/, 'suppresses instantiation stack when .file is supplied')
 
               expect(err.broccoliPayload.originalError).to.equal(originalError)
 
               // Reports offending node
               expect(err.broccoliPayload.nodeId).to.equal(0)
-              expect(err.broccoliPayload.nodeName).to.equal('FailingBuildPlugin')
+              expect(err.broccoliPayload.nodeName).to.equal('FailingPlugin')
               expect(err.broccoliPayload.nodeAnnotation).to.equal('annotated')
               expect(err.broccoliPayload.instantiationStack).to.be.a('string')
 
@@ -469,19 +393,19 @@ describe('Builder', function() {
         it('reports the instantiationStack when no err.file is given', function() {
           var originalError = new Error('whoops')
 
-          builder = new Builder(new plugins.FailingBuildPlugin(originalError))
+          builder = new Builder(new plugins.FailingPlugin(originalError))
           return expect(builder.build()).to.be.rejectedWith(Builder.BuildError,
-            /whoops\nat FailingBuildPlugin\n-~- created here: -~-/)
+            /whoops\nat FailingPlugin\n-~- created here: -~-/)
         })
 
         it('handles string errors', function() {
-          builder = new Builder(new plugins.FailingBuildPlugin('string exception'))
+          builder = new Builder(new plugins.FailingPlugin('string exception'))
           return expect(builder.build()).to.be.rejectedWith(Builder.BuildError, /string exception/)
         })
 
         it('handles undefined errors', function() {
           // Apparently this is a thing.
-          builder = new Builder(new plugins.FailingBuildPlugin(undefined))
+          builder = new Builder(new plugins.FailingPlugin(undefined))
           return expect(builder.build()).to.be.rejectedWith(Builder.BuildError, /undefined/)
         })
       })
@@ -518,7 +442,7 @@ describe('Builder', function() {
     })
 
     it('triggers matching nodeEnd event when a node fails to build', function() {
-      builder = new Builder(new plugins.MergePlugin([new plugins.FailingBuildPlugin(new Error('whoops'))]))
+      builder = new Builder(new plugins.MergePlugin([new plugins.FailingPlugin(new Error('whoops'))]))
       setupEventHandlers()
       return expect(builder.build()).to.be.rejected
         .then(function() {
